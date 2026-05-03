@@ -1,0 +1,152 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from "@nestjs/common";
+import { ProductStatus } from "@sario/db";
+import { PrismaService } from "../prisma/prisma.service.js";
+import { MeilisearchService } from "./meilisearch.service.js";
+import type { CreateProductDto } from "./dto/create-product.dto.js";
+
+@Injectable()
+export class ProductService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly search: MeilisearchService,
+  ) {}
+
+  async create(vendorId: string, dto: CreateProductDto) {
+    const slug = await this.buildUniqueSlug(dto.name);
+
+    const product = await this.prisma.product.create({
+      data: {
+        vendorId,
+        categoryId: dto.categoryId,
+        name: dto.name,
+        slug,
+        description: dto.description,
+        fabric: dto.fabric,
+        region: dto.region,
+        weaverStory: dto.weaverStory,
+        giTag: dto.giTag,
+        hsnCode: dto.hsnCode,
+        tags: dto.tags ?? [],
+        status: ProductStatus.PENDING_REVIEW,
+        variants: {
+          create: dto.variants.map((v) => ({
+            name: v.name,
+            sku: v.sku,
+            color: v.color,
+            pricePaise: v.pricePaise,
+            mrpPaise: v.mrpPaise,
+            weightGrams: v.weightGrams ?? 0,
+            inventory: { create: { quantity: v.quantity ?? 0 } },
+          })),
+        },
+      },
+      include: { variants: { include: { inventory: true } }, images: true },
+    });
+
+    return product;
+  }
+
+  async update(vendorId: string, productId: string, data: Partial<CreateProductDto>) {
+    const product = await this.assertOwnership(vendorId, productId);
+
+    if ([ProductStatus.APPROVED, ProductStatus.REJECTED].includes(product.status)) {
+      await this.prisma.product.update({
+        where: { id: productId },
+        data: { status: ProductStatus.PENDING_REVIEW },
+      });
+    }
+
+    return this.prisma.product.update({
+      where: { id: productId },
+      data: {
+        name: data.name,
+        description: data.description,
+        fabric: data.fabric,
+        region: data.region,
+        weaverStory: data.weaverStory,
+        tags: data.tags,
+      },
+    });
+  }
+
+  async softDelete(vendorId: string, productId: string) {
+    await this.assertOwnership(vendorId, productId);
+    const deleted = await this.prisma.product.update({
+      where: { id: productId },
+      data: { deletedAt: new Date(), status: ProductStatus.ARCHIVED },
+    });
+    await this.search.delete(productId);
+    return deleted;
+  }
+
+  async listForVendor(
+    vendorId: string,
+    opts: { status?: ProductStatus; search?: string; page: number; limit: number },
+  ) {
+    const where = {
+      vendorId,
+      deletedAt: null as null,
+      ...(opts.status && { status: opts.status }),
+      ...(opts.search && { name: { contains: opts.search, mode: "insensitive" as const } }),
+    };
+    const [data, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        include: { variants: { select: { pricePaise: true, inventory: true } }, images: { where: { isPrimary: true }, take: 1 } },
+        skip: (opts.page - 1) * opts.limit,
+        take: opts.limit,
+        orderBy: { createdAt: "desc" },
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+    return { data, meta: { total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit) } };
+  }
+
+  // Called by admin approval flow
+  async approveAndIndex(productId: string) {
+    const product = await this.prisma.product.update({
+      where: { id: productId },
+      data: { status: ProductStatus.APPROVED, searchIndexedAt: new Date() },
+      include: { variants: { select: { pricePaise: true } }, images: { where: { isPrimary: true }, take: 1 } },
+    });
+
+    const minPricePaise = Math.min(...product.variants.map((v) => v.pricePaise));
+    await this.search.upsert({
+      id: product.id,
+      name: product.name,
+      slug: product.slug,
+      description: product.description,
+      fabric: product.fabric,
+      region: product.region,
+      tags: product.tags,
+      categoryId: product.categoryId,
+      vendorId: product.vendorId,
+      minPricePaise,
+      primaryImageUrl: product.images[0]?.url,
+    });
+
+    return product;
+  }
+
+  private async buildUniqueSlug(name: string): Promise<string> {
+    const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const suffix = Date.now().toString(36);
+    const candidate = `${base}-${suffix}`;
+    const existing = await this.prisma.product.findUnique({ where: { slug: candidate } });
+    return existing ? `${candidate}-2` : candidate;
+  }
+
+  private async assertOwnership(vendorId: string, productId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId, deletedAt: null },
+    });
+    if (!product) throw new NotFoundException("Product not found.");
+    if (product.vendorId !== vendorId) throw new ForbiddenException("Not your product.");
+    return product;
+  }
+}

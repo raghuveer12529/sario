@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git ls-tree *)",
+      "WebFetch(domain:www.prisma.io)",
+      "Bash(pnpm install *)",
+      "Bash(brew list *)"
+    ]
+  }
+}

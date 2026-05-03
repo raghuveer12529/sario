@@ -1,0 +1,46 @@
+import {
+  Controller, Get, Post, Body, Param, Query,
+  UseGuards, Version, ParseIntPipe, DefaultValuePipe,
+} from "@nestjs/common";
+import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
+import { IsString } from "class-validator";
+import { OrderService } from "./order.service.js";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { CurrentUser, type CurrentUserPayload } from "../auth/decorators/current-user.decorator.js";
+
+class CancelOrderDto { @IsString() reason: string; }
+class ReturnOrderDto { @IsString() reason: string; }
+
+@ApiTags("Orders (Buyer)")
+@Controller("me/orders")
+@Version("1")
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+export class OrderController {
+  constructor(private readonly orderService: OrderService) {}
+
+  @Get()
+  list(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query("page", new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query("limit", new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ) {
+    return this.orderService.listForBuyer(user.id, page, limit);
+  }
+
+  @Get(":id")
+  @ApiOperation({ summary: "Get order detail" })
+  getOne(@CurrentUser() user: CurrentUserPayload, @Param("id") id: string) {
+    return this.orderService.getOrderForBuyer(user.id, id);
+  }
+
+  @Post(":id/cancel")
+  cancel(@CurrentUser() user: CurrentUserPayload, @Param("id") id: string, @Body() dto: CancelOrderDto) {
+    return this.orderService.cancelOrder(user.id, id, dto.reason);
+  }
+
+  @Post(":id/return")
+  requestReturn(@CurrentUser() user: CurrentUserPayload, @Param("id") id: string, @Body() dto: ReturnOrderDto) {
+    return this.orderService.requestReturn(user.id, id, dto.reason);
+  }
+}
