@@ -45,3 +45,4 @@ coverage/
 *.tsbuildinfo
 sario-master-plan.md
 .claude/.mcp.json
+#
