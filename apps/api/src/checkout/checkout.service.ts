@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
   Logger,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { PaymentStatus, OrderStatus } from "@sario/db";
@@ -35,10 +36,11 @@ export class CheckoutService {
     });
     if (!address) throw new NotFoundException("Address not found.");
 
-    // Validate stock and lock inventory
+    // Validate stock
     for (const item of cart.items) {
       const available =
-        (item.variant.inventory?.quantity ?? 0) - (item.variant.inventory?.reservedQuantity ?? 0);
+        (item.variant.inventory?.quantity ?? 0) -
+        (item.variant.inventory?.reservedQuantity ?? 0);
       if (available < item.quantity) {
         throw new BadRequestException(
           `"${item.variant.product.name}" has only ${available} unit(s) available.`,
@@ -56,27 +58,73 @@ export class CheckoutService {
       ),
     );
 
-    // Calculate totals (simplified: no GST split for now)
-    const subtotalPaise = cart.items.reduce((sum, i) => sum + i.pricePaise * i.quantity, 0);
-    const shippingPaise = subtotalPaise >= 200000 ? 0 : 5000; // free shipping above ₹2,000
+    const subtotalPaise = cart.items.reduce((s, i) => s + i.pricePaise * i.quantity, 0);
+    const shippingPaise = subtotalPaise >= 200000 ? 0 : 5000;
     const totalPaise = subtotalPaise + shippingPaise;
-
     const idempotencyKey = randomUUID();
-    const rzOrder = await this.razorpay.createOrder(totalPaise, idempotencyKey);
+    const checkoutNote = `checkout:${idempotencyKey}`;
 
-    // Group items by vendor (create one order per vendor)
+    // Group items by vendor
     const vendorGroups = new Map<string, typeof cart.items>();
     for (const item of cart.items) {
-      const vendorId = item.variant.product.id; // TODO: look up vendorId from product
-      const g = vendorGroups.get(vendorId) ?? [];
-      g.push(item);
-      vendorGroups.set(vendorId, g);
+      const vid = item.variant.product.vendorId;
+      vendorGroups.set(vid, [...(vendorGroups.get(vid) ?? []), item]);
     }
 
-    // Create payment record (order created after webhook confirms payment)
-    const payment = await this.prisma.payment.create({
+    const addressSnapshot = {
+      fullName: address.fullName,
+      phone: address.phone,
+      line1: address.line1,
+      line2: address.line2,
+      city: address.city,
+      state: address.state,
+      pincode: address.pincode,
+      country: address.country,
+    };
+
+    // Create one PENDING Order per vendor
+    const orders = await Promise.all(
+      [...vendorGroups.entries()].map(async ([vendorId, items], index) => {
+        const vendorSubtotal = items.reduce((s, i) => s + i.pricePaise * i.quantity, 0);
+        const orderShippingPaise = index === 0 ? shippingPaise : 0;
+        return this.prisma.order.create({
+          data: {
+            userId,
+            vendorId,
+            addressId: address.id,
+            addressSnapshot,
+            status: OrderStatus.PENDING,
+            subtotalPaise: vendorSubtotal,
+            shippingPaise: orderShippingPaise,
+            totalPaise: vendorSubtotal + orderShippingPaise,
+            notes: checkoutNote,
+            items: {
+              create: items.map((i) => ({
+                variantId: i.variantId,
+                productSnapshot: {
+                  productName: i.variant.product.name,
+                  variantName: i.variant.name,
+                  sku: i.variant.sku,
+                },
+                quantity: i.quantity,
+                unitPricePaise: i.pricePaise,
+                totalPaise: i.pricePaise * i.quantity,
+              })),
+            },
+          },
+        });
+      }),
+    );
+
+    const rzOrder = await this.razorpay.createOrder(totalPaise, idempotencyKey);
+
+    const paymentOrder = orders[0];
+    if (!paymentOrder) throw new BadRequestException("No orders were created.");
+
+    // Create payment linked to first order (payment covers all vendor orders)
+    await this.prisma.payment.create({
       data: {
-        orderId: "pending", // placeholder until order is created post-payment
+        orderId: paymentOrder.id,
         razorpayOrderId: rzOrder.id,
         amountPaise: totalPaise,
         idempotencyKey,
@@ -88,7 +136,7 @@ export class CheckoutService {
       razorpayOrderId: rzOrder.id,
       amountPaise: totalPaise,
       currency: "INR",
-      paymentId: payment.id,
+      orderIds: orders.map((o) => o.id),
     };
   }
 
@@ -111,27 +159,82 @@ export class CheckoutService {
         where: { razorpayOrderId: entity.order_id },
         data: { status: PaymentStatus.FAILED, failureReason: "Payment failed via webhook" },
       });
-      await this.releaseInventoryForOrder(entity.order_id);
+      await this.releaseInventoryForRazorpayOrder(entity.order_id);
     }
   }
 
-  private async confirmPayment(razorpayOrderId: string, razorpayPaymentId: string) {
+  async verifyAndConfirm(userId: string, dto: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) {
+    const isValid = this.razorpay.verifyPaymentSignature(
+      dto.razorpayOrderId,
+      dto.razorpayPaymentId,
+      dto.razorpaySignature,
+    );
+
+    if (!isValid) {
+      throw new UnauthorizedException("Invalid payment signature.");
+    }
+
+    await this.confirmPayment(dto.razorpayOrderId, dto.razorpayPaymentId);
+    return { success: true };
+  }
+
+  /** Called by both webhook and the dev bypass endpoint */
+  async confirmPayment(razorpayOrderId: string, razorpayPaymentId: string) {
     const payment = await this.prisma.payment.findUnique({ where: { razorpayOrderId } });
     if (!payment || payment.status === PaymentStatus.CAPTURED) return;
 
     await this.prisma.payment.update({
       where: { id: payment.id },
-      data: { razorpayPaymentId, status: PaymentStatus.CAPTURED, capturedAt: new Date() },
+      data: {
+        razorpayPaymentId,
+        status: PaymentStatus.CAPTURED,
+        capturedAt: new Date(),
+      },
     });
-    // TODO: create Order records from cart snapshot (simplified here)
+
+    const anchorOrder = await this.prisma.order.findUnique({ where: { id: payment.orderId } });
+    if (!anchorOrder) return;
+
+    const orderGroupWhere = anchorOrder.notes
+      ? { userId: anchorOrder.userId, notes: anchorOrder.notes }
+      : { id: anchorOrder.id };
+
+    await this.prisma.order.updateMany({
+      where: {
+        ...orderGroupWhere,
+        status: OrderStatus.PENDING,
+      },
+      data: { status: OrderStatus.CONFIRMED, confirmedAt: new Date() },
+    });
+
+    // Clear cart
+    await this.cartService.clearCart(anchorOrder.userId);
+
+    this.logger.log(`Payment confirmed: ${razorpayOrderId} → orders confirmed for user ${anchorOrder.userId}`);
   }
 
-  private async releaseInventoryForOrder(razorpayOrderId: string) {
-    this.logger.warn(`Releasing inventory for failed order ${razorpayOrderId}`);
-    // In prod: look up cart items linked to this payment and decrement reservedQuantity
+  private async releaseInventoryForRazorpayOrder(razorpayOrderId: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { razorpayOrderId },
+      include: { order: true },
+    });
+    if (!payment) return;
+
+    const orders = await this.prisma.order.findMany({
+      where: payment.order.notes
+        ? { userId: payment.order.userId, notes: payment.order.notes }
+        : { id: payment.order.id },
+      include: { items: true },
+    });
+
+    for (const item of orders.flatMap((order) => order.items)) {
+      await this.prisma.inventory.update({
+        where: { variantId: item.variantId },
+        data: { reservedQuantity: { decrement: item.quantity } },
+      }).catch(() => null);
+    }
   }
 
-  /** Reconcile payments older than 10 min that are still CREATED */
   @Cron(CronExpression.EVERY_5_MINUTES)
   async reconcileOrphanPayments() {
     const cutoff = new Date(Date.now() - 10 * 60 * 1000);

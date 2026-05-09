@@ -8,9 +8,9 @@ import { RedisService } from "./redis.service.js";
     {
       provide: "REDIS_OPTIONS",
       useFactory: (config: ConfigService) => ({
-        host: config.get("REDIS_HOST", "localhost"),
+        host: config.get<string>("REDIS_HOST", "localhost"),
         port: config.get<number>("REDIS_PORT", 6379),
-        password: config.get("REDIS_PASSWORD"),
+        password: config.get<string>("REDIS_PASSWORD"),
       }),
       inject: [ConfigService],
     },

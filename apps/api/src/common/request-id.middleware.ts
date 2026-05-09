@@ -6,7 +6,7 @@ import type { FastifyRequest, FastifyReply } from "fastify";
 export class RequestIdMiddleware implements NestMiddleware {
   use(req: FastifyRequest["raw"], res: FastifyReply["raw"], next: () => void) {
     const id = randomUUID();
-    (req as Record<string, unknown>)["requestId"] = id;
+    (req as unknown as Record<string, unknown>)["requestId"] = id;
     res.setHeader("x-request-id", id);
     next();
   }

@@ -1,6 +1,8 @@
 export interface JwtPayload {
   sub: string;
-  phone: string;
+  phone?: string;
+  email?: string;
+  role?: "admin";
 }
 
 export interface AuthTokens {

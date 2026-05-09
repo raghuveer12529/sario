@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Body, Param, Query,
-  UseGuards, Version, ParseIntPipe, DefaultValuePipe,
+  UseGuards, ParseIntPipe, DefaultValuePipe,
 } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { IsString } from "class-validator";
@@ -12,8 +12,7 @@ class CancelOrderDto { @IsString() reason: string; }
 class ReturnOrderDto { @IsString() reason: string; }
 
 @ApiTags("Orders (Buyer)")
-@Controller("me/orders")
-@Version("1")
+@Controller({ path: "me/orders", version: "1" })
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class OrderController {
@@ -39,8 +38,4 @@ export class OrderController {
     return this.orderService.cancelOrder(user.id, id, dto.reason);
   }
 
-  @Post(":id/return")
-  requestReturn(@CurrentUser() user: CurrentUserPayload, @Param("id") id: string, @Body() dto: ReturnOrderDto) {
-    return this.orderService.requestReturn(user.id, id, dto.reason);
-  }
 }

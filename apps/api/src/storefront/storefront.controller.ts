@@ -1,10 +1,9 @@
-import { Controller, Get, Param, Query, ParseIntPipe, DefaultValuePipe, Version } from "@nestjs/common";
+import { Controller, Get, Param, Query, ParseIntPipe, DefaultValuePipe } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiQuery } from "@nestjs/swagger";
 import { StorefrontService } from "./storefront.service.js";
 
 @ApiTags("Storefront")
-@Controller("catalog")
-@Version("1")
+@Controller({ path: "catalog", version: "1" })
 export class StorefrontController {
   constructor(private readonly storefrontService: StorefrontService) {}
 
@@ -43,10 +42,15 @@ export class StorefrontController {
     @Query("limit", new DefaultValuePipe(20), ParseIntPipe) limit = 20,
   ) {
     return this.storefrontService.searchProducts({
-      q, categoryId, region, fabric,
-      minPrice: minPrice || undefined,
-      maxPrice: maxPrice ? parseInt(maxPrice) : undefined,
-      sort, page, limit,
+      ...(q ? { q } : {}),
+      ...(categoryId ? { categoryId } : {}),
+      ...(region ? { region } : {}),
+      ...(fabric ? { fabric } : {}),
+      ...(minPrice ? { minPrice } : {}),
+      ...(maxPrice ? { maxPrice: parseInt(maxPrice) } : {}),
+      ...(sort ? { sort } : {}),
+      page,
+      limit,
     });
   }
 

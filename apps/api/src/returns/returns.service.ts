@@ -25,7 +25,7 @@ export class ReturnsService {
     }
     return this.prisma.order.update({
       where: { id: orderId },
-      data: { status: OrderStatus.RETURN_REQUESTED },
+      data: { status: OrderStatus.RETURN_REQUESTED, notes: reason },
     });
   }
 
@@ -50,7 +50,7 @@ export class ReturnsService {
     // Vendor has 48h to reject; after that, admin can escalate
     return this.prisma.order.update({
       where: { id: orderId },
-      data: { status: OrderStatus.RETURN_REJECTED },
+      data: { status: OrderStatus.RETURN_REJECTED, notes: reason },
     });
   }
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Param, Body, UseGuards, Version } from "@nestjs/common";
+import { Controller, Get, Post, Query, Param, Body, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from "@nestjs/swagger";
 import { IsOptional, IsString } from "class-validator";
 import { VendorStatus } from "@sario/db";
@@ -12,8 +12,7 @@ class RejectVendorDto {
 }
 
 @ApiTags("Admin — Vendors")
-@Controller("admin/vendors")
-@Version("1")
+@Controller({ path: "admin/vendors", version: "1" })
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class AdminVendorController {
@@ -42,5 +41,11 @@ export class AdminVendorController {
   @ApiOperation({ summary: "Suspend an approved vendor" })
   suspend(@Param("id") id: string) {
     return this.vendorService.suspend(id);
+  }
+
+  @Get(":id")
+  @ApiOperation({ summary: "Get vendor details" })
+  findOne(@Param("id") id: string) {
+    return this.vendorService.findOne(id);
   }
 }

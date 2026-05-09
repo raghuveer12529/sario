@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Body, Param, UseGuards, Version } from "@nestjs/common";
+import { Controller, Post, Get, Patch, Body, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { VendorService } from "./vendor.service.js";
 import { ApplyVendorDto } from "./dto/apply-vendor.dto.js";
@@ -7,8 +7,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
 import { CurrentUser, type CurrentUserPayload } from "../auth/decorators/current-user.decorator.js";
 
 @ApiTags("Vendor")
-@Controller("vendors")
-@Version("1")
+@Controller({ path: "vendors", version: "1" })
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class VendorController {

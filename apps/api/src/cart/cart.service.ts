@@ -10,7 +10,7 @@ export class CartService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getCart(userId: string) {
-    return this.prisma.cart.upsert({
+    const cart = await this.prisma.cart.upsert({
       where: { userId },
       create: { userId },
       update: {},
@@ -19,7 +19,7 @@ export class CartService {
           include: {
             variant: {
               include: {
-                product: { select: { id: true, name: true, slug: true } },
+                product: { select: { id: true, name: true, slug: true, vendorId: true } },
                 images: { where: { isPrimary: true }, take: 1 },
                 inventory: { select: { quantity: true, reservedQuantity: true } },
               },
@@ -28,6 +28,21 @@ export class CartService {
         },
       },
     });
+
+    const subtotalPaise = cart.items.reduce((s, i) => s + i.pricePaise * i.quantity, 0);
+    const shippingPaise = subtotalPaise >= 200000 ? 0 : subtotalPaise > 0 ? 5000 : 0;
+    const totalPaise = subtotalPaise + shippingPaise;
+
+    return {
+      ...cart,
+      summary: {
+        subtotalPaise,
+        shippingPaise,
+        totalPaise,
+        itemCount: cart.items.length,
+        freeShippingThreshold: 200000,
+      },
+    };
   }
 
   async addItem(userId: string, variantId: string, quantity: number) {

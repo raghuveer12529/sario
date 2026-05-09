@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException,
   ForbiddenException,
 } from "@nestjs/common";
 import { ProductStatus } from "@sario/db";
@@ -26,18 +25,18 @@ export class ProductService {
         name: dto.name,
         slug,
         description: dto.description,
-        fabric: dto.fabric,
-        region: dto.region,
-        weaverStory: dto.weaverStory,
-        giTag: dto.giTag,
-        hsnCode: dto.hsnCode,
+        ...(dto.fabric ? { fabric: dto.fabric } : {}),
+        ...(dto.region ? { region: dto.region } : {}),
+        ...(dto.weaverStory ? { weaverStory: dto.weaverStory } : {}),
+        ...(dto.giTag ? { giTag: dto.giTag } : {}),
+        ...(dto.hsnCode ? { hsnCode: dto.hsnCode } : {}),
         tags: dto.tags ?? [],
         status: ProductStatus.PENDING_REVIEW,
         variants: {
           create: dto.variants.map((v) => ({
             name: v.name,
             sku: v.sku,
-            color: v.color,
+            ...(v.color ? { color: v.color } : {}),
             pricePaise: v.pricePaise,
             mrpPaise: v.mrpPaise,
             weightGrams: v.weightGrams ?? 0,
@@ -54,23 +53,28 @@ export class ProductService {
   async update(vendorId: string, productId: string, data: Partial<CreateProductDto>) {
     const product = await this.assertOwnership(vendorId, productId);
 
-    if ([ProductStatus.APPROVED, ProductStatus.REJECTED].includes(product.status)) {
+    if (
+      product.status === ProductStatus.APPROVED ||
+      product.status === ProductStatus.REJECTED
+    ) {
       await this.prisma.product.update({
         where: { id: productId },
         data: { status: ProductStatus.PENDING_REVIEW },
       });
     }
 
+    const updateData = {
+      ...(data.name ? { name: data.name } : {}),
+      ...(data.description ? { description: data.description } : {}),
+      ...(data.fabric !== undefined ? { fabric: data.fabric } : {}),
+      ...(data.region !== undefined ? { region: data.region } : {}),
+      ...(data.weaverStory !== undefined ? { weaverStory: data.weaverStory } : {}),
+      ...(data.tags ? { tags: data.tags } : {}),
+    };
+
     return this.prisma.product.update({
       where: { id: productId },
-      data: {
-        name: data.name,
-        description: data.description,
-        fabric: data.fabric,
-        region: data.region,
-        weaverStory: data.weaverStory,
-        tags: data.tags,
-      },
+      data: updateData,
     });
   }
 
@@ -90,7 +94,7 @@ export class ProductService {
   ) {
     const where = {
       vendorId,
-      deletedAt: null as null,
+      deletedAt: null,
       ...(opts.status && { status: opts.status }),
       ...(opts.search && { name: { contains: opts.search, mode: "insensitive" as const } }),
     };
@@ -127,7 +131,7 @@ export class ProductService {
       categoryId: product.categoryId,
       vendorId: product.vendorId,
       minPricePaise,
-      primaryImageUrl: product.images[0]?.url,
+      ...(product.images[0]?.url ? { primaryImageUrl: product.images[0].url } : {}),
     });
 
     return product;

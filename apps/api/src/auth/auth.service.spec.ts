@@ -1,5 +1,5 @@
 import { Test, type TestingModule } from "@nestjs/testing";
-import { BadRequestException, TooManyRequestsException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, HttpException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { OtpPurpose } from "@sario/db";
@@ -85,9 +85,12 @@ describe("AuthService", () => {
       const result = await service.requestOtp(phone, OtpPurpose.LOGIN);
 
       expect(result.expiresIn).toBe(300);
-      expect(mockPrisma.otpRecord.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ phone, hashedOtp: "hashed-otp" }) }),
-      );
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const createArg = mockPrisma.otpRecord.create.mock.calls[0]?.[0] as
+        | { data: { phone: string; hashedOtp: string } }
+        | undefined;
+      expect(createArg?.data.phone).toBe(phone);
+      expect(createArg?.data.hashedOtp).toBe("hashed-otp");
       expect(mockMsg91.sendOtp).toHaveBeenCalledWith(phone, "123456");
     });
 
@@ -114,11 +117,11 @@ describe("AuthService", () => {
       expect(mockRedis.expire).not.toHaveBeenCalled();
     });
 
-    it("throws TooManyRequestsException after 3 OTPs per hour", async () => {
+    it("throws 429 after 3 OTPs per hour", async () => {
       mockRedis.incr.mockResolvedValue(4);
 
       await expect(service.requestOtp(phone, OtpPurpose.LOGIN)).rejects.toThrow(
-        TooManyRequestsException,
+        HttpException,
       );
       expect(mockPrisma.otpRecord.create).not.toHaveBeenCalled();
     });

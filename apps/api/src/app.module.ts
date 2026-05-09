@@ -16,6 +16,7 @@ import { CheckoutModule } from "./checkout/checkout.module.js";
 import { OrderModule } from "./order/order.module.js";
 import { ReturnsModule } from "./returns/returns.module.js";
 import { NotificationModule } from "./notification/notification.module.js";
+import { AdminModule } from "./admin/admin.module.js";
 import { AdminProductController } from "./catalog/admin-product.controller.js";
 
 @Module({
@@ -35,6 +36,7 @@ import { AdminProductController } from "./catalog/admin-product.controller.js";
     CheckoutModule,
     OrderModule,
     ReturnsModule,
+    AdminModule,
   ],
   controllers: [AppController, AdminProductController],
   providers: [AppService],

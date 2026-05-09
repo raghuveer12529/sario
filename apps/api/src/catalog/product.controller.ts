@@ -1,6 +1,6 @@
 import {
   Controller, Post, Patch, Delete, Get,
-  Body, Param, Query, UseGuards, Version,
+  Body, Param, Query, UseGuards,
   ParseIntPipe, DefaultValuePipe,
 } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from "@nestjs/swagger";
@@ -11,8 +11,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
 import { CurrentUser, type CurrentUserPayload } from "../auth/decorators/current-user.decorator.js";
 
 @ApiTags("Products (Vendor)")
-@Controller("vendors/me/products")
-@Version("1")
+@Controller({ path: "vendors/me/products", version: "1" })
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class ProductController {
@@ -53,6 +52,11 @@ export class ProductController {
     @Query("page", new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query("limit", new DefaultValuePipe(20), ParseIntPipe) limit = 20,
   ) {
-    return this.productService.listForVendor(user.id, { status, search, page, limit });
+    return this.productService.listForVendor(user.id, {
+      ...(status ? { status } : {}),
+      ...(search ? { search } : {}),
+      page,
+      limit,
+    });
   }
 }

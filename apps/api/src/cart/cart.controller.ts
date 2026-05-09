@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Version } from "@nestjs/common";
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { IsInt, IsString, Min } from "class-validator";
 import { CartService } from "./cart.service.js";
@@ -11,8 +11,7 @@ class CartItemDto {
 }
 
 @ApiTags("Cart")
-@Controller("cart")
-@Version("1")
+@Controller({ path: "cart", version: "1" })
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class CartController {

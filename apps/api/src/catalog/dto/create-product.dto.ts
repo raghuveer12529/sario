@@ -1,10 +1,9 @@
 import {
-  IsString, IsOptional, IsArray, IsInt, IsBoolean,
-  ValidateNested, Min, MaxLength, IsEnum,
+  IsString, IsOptional, IsArray, IsInt,
+  ValidateNested, Min, MaxLength,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { ProductStatus } from "@sario/db";
 
 export class CreateVariantDto {
   @ApiProperty() @IsString() name: string;

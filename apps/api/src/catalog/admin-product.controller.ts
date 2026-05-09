@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, Body, UseGuards, Version } from "@nestjs/common";
+import { Controller, Get, Post, Param, Query, Body, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { IsString, IsOptional } from "class-validator";
 import { ProductStatus } from "@sario/db";
@@ -11,8 +11,7 @@ class RejectProductDto {
 }
 
 @ApiTags("Admin — Products")
-@Controller("admin/products")
-@Version("1")
+@Controller({ path: "admin/products", version: "1" })
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class AdminProductController {
@@ -54,17 +53,8 @@ export class AdminProductController {
   async reject(@Param("id") id: string, @Body() dto: RejectProductDto) {
     return this.prisma.product.update({
       where: { id },
-      data: { status: ProductStatus.REJECTED, rejectionReason: dto.reason },
+      data: { status: ProductStatus.REJECTED, rejectionReason: dto.reason ?? null },
     });
   }
 
-  @Get("/stats")
-  async stats() {
-    const [pendingVendors, pendingProducts, openDisputes] = await Promise.all([
-      this.prisma.vendor.count({ where: { status: "PENDING" } }),
-      this.prisma.product.count({ where: { status: ProductStatus.PENDING_REVIEW, deletedAt: null } }),
-      this.prisma.order.count({ where: { status: "RETURN_REQUESTED" } }),
-    ]);
-    return { pendingVendors, pendingProducts, openDisputes };
-  }
 }

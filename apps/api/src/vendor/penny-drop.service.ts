@@ -21,14 +21,14 @@ export class PennyDropService implements IPennyDropProvider {
     this.isMock = !this.config.get("PENNY_DROP_API_KEY");
   }
 
-  async verify(accountNumber: string, ifsc: string): Promise<PennyDropResult> {
+  verify(accountNumber: string, _ifsc: string): Promise<PennyDropResult> {
     if (this.isMock) {
       this.logger.warn(`[MOCK] Penny drop for account ending ${accountNumber.slice(-4)}`);
-      return { verified: true, nameAtBank: "Mock Account Holder" };
+      return Promise.resolve({ verified: true, nameAtBank: "Mock Account Holder" });
     }
 
     // TODO: integrate Karza or Surepass real API
     this.logger.warn("Real penny-drop not implemented yet — add PENNY_DROP_API_KEY logic");
-    return { verified: false, reason: "Provider not configured" };
+    return Promise.resolve({ verified: false, reason: "Provider not configured" });
   }
 }

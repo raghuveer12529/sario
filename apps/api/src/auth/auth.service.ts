@@ -2,10 +2,13 @@ import {
   Injectable,
   BadRequestException,
   UnauthorizedException,
+  ForbiddenException,
   Logger,
-  TooManyRequestsException,
   InternalServerErrorException,
+  HttpException,
+  HttpStatus,
 } from "@nestjs/common";
+import * as bcrypt from "bcrypt";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { OtpPurpose } from "@sario/db";
@@ -137,6 +140,58 @@ export class AuthService {
     });
   }
 
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId, deletedAt: null },
+      select: { id: true, phone: true, name: true, avatarUrl: true, isVerified: true },
+    });
+    if (!user) throw new UnauthorizedException("User not found.");
+    return user;
+  }
+
+  async updateMe(userId: string, data: any) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(data.name ? { name: data.name } : {}),
+        ...(data.email ? { email: data.email } : {}),
+        ...(data.avatarUrl ? { avatarUrl: data.avatarUrl } : {}),
+      },
+      select: { id: true, phone: true, name: true, email: true, avatarUrl: true, isVerified: true },
+    });
+    return user;
+  }
+
+  async adminLogin(email: string, password: string): Promise<{ accessToken: string; admin: { id: string; name: string; email: string; role: string } }> {
+    const admin = await this.prisma.adminUser.findUnique({
+      where: { email, deletedAt: null },
+    });
+    if (!admin) throw new UnauthorizedException("Invalid credentials.");
+
+    const valid = await bcrypt.compare(password, admin.passwordHash);
+    if (!valid) throw new UnauthorizedException("Invalid credentials.");
+
+    await this.prisma.adminUser.update({ where: { id: admin.id }, data: { lastLoginAt: new Date() } });
+
+    const payload: JwtPayload = { sub: admin.id, email: admin.email, role: "admin" };
+    const accessToken = this.jwt.sign(payload);
+    return { accessToken, admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role } };
+  }
+
+  async devLogin(phone: string): Promise<AuthResponse> {
+    if (this.config.get("NODE_ENV") === "production") {
+      throw new ForbiddenException("Dev login is not available in production.");
+    }
+    const user = await this.prisma.user.upsert({
+      where: { phone },
+      update: {},
+      create: { phone, isVerified: true },
+      select: { id: true, phone: true, name: true, isVerified: true },
+    });
+    const tokens = await this.issueTokens(user.id, user.phone);
+    return { ...tokens, user };
+  }
+
   private async issueTokens(userId: string, phone: string): Promise<AuthTokens> {
     const payload: JwtPayload = { sub: userId, phone };
     const accessToken = this.jwt.sign(payload);
@@ -159,8 +214,9 @@ export class AuthService {
       await this.redis.expire(key, 3600);
     }
     if (count > OTP_MAX_ATTEMPTS_PER_HOUR) {
-      throw new TooManyRequestsException(
+      throw new HttpException(
         `Too many OTP requests. Try again in an hour.`,
+        HttpStatus.TOO_MANY_REQUESTS,
       );
     }
   }

@@ -64,16 +64,25 @@ export class RazorpayService {
     return expected === signature;
   }
 
+  verifyPaymentSignature(orderId: string, paymentId: string, signature: string): boolean {
+    if (!this.keyId) return true; // Always true in mock mode
+    const expected = createHmac("sha256", this.keySecret)
+      .update(`${orderId}|${paymentId}`)
+      .digest("hex");
+    return expected === signature;
+  }
+
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const credentials = Buffer.from(`${this.keyId}:${this.keySecret}`).toString("base64");
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const init: RequestInit = {
       method,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Basic ${credentials}`,
       },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    };
+    const res = await fetch(`${this.baseUrl}${path}`, init);
     if (!res.ok) {
       const err = await res.text();
       throw new Error(`Razorpay ${method} ${path} → ${res.status}: ${err}`);

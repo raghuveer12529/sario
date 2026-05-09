@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Param, UseGuards, Version } from "@nestjs/common";
+import { Controller, Post, Body, Param, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { IsString, IsOptional, IsInt, Min } from "class-validator";
 import { ReturnsService } from "./returns.service.js";
@@ -12,8 +12,7 @@ class RefundDto {
 }
 
 @ApiTags("Returns")
-@Controller()
-@Version("1")
+@Controller({ version: "1" })
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class ReturnsController {

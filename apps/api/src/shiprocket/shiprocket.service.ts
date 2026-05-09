@@ -17,7 +17,7 @@ export class ShiprocketService {
   private readonly isMock: boolean;
 
   constructor(private readonly config: ConfigService) {
-    this.isMock = !this.config.get("SHIPROCKET_EMAIL");
+    this.isMock = !this.config.get<string>("SHIPROCKET_EMAIL");
   }
 
   async createShipment(payload: {
@@ -67,8 +67,8 @@ export class ShiprocketService {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email: this.config.get("SHIPROCKET_EMAIL"),
-        password: this.config.get("SHIPROCKET_PASSWORD"),
+        email: this.config.get<string>("SHIPROCKET_EMAIL"),
+        password: this.config.get<string>("SHIPROCKET_PASSWORD"),
       }),
     });
     const data = (await res.json()) as { token: string };

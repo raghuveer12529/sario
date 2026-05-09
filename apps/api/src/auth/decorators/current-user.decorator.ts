@@ -3,9 +3,12 @@ import type { FastifyRequest } from "fastify";
 
 export interface CurrentUserPayload {
   id: string;
-  phone: string;
+  phone?: string;
   name: string | null;
-  isVerified: boolean;
+  isVerified?: boolean;
+  role?: "admin";
+  email?: string;
+  vendor?: { id: string; businessName: string; status: string };
 }
 
 export const CurrentUser = createParamDecorator(

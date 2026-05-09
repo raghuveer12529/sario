@@ -74,14 +74,15 @@ export class MeilisearchService implements OnModuleInit {
   }
 
   private async request<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${this.host}${path}`, {
+    const init: RequestInit = {
       method,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.apiKey}`,
       },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    };
+    const res = await fetch(`${this.host}${path}`, init);
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`Meilisearch ${method} ${path} → ${res.status}: ${text}`);

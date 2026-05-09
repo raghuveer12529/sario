@@ -6,8 +6,14 @@ import {
 } from "@nestjs/platform-fastify";
 import { ValidationPipe, VersioningType } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
-import helmet from "helmet";
+import helmet from "@fastify/helmet";
 import { AppModule } from "./app.module.js";
+
+// BigInt fields (e.g. monthlyGmvPaise on Vendor) are not JSON-serializable by default.
+// Serialize as string to avoid precision loss on large paise values.
+(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function () {
+  return this.toString();
+};
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -16,7 +22,7 @@ async function bootstrap() {
   );
 
   // Security
-  await app.register(helmet as never);
+  await app.register(helmet as never, { crossOriginResourcePolicy: false });
   app.enableCors({
     origin: process.env["ALLOWED_ORIGINS"]?.split(",") ?? ["http://localhost:3000"],
     credentials: true,

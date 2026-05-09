@@ -8,7 +8,10 @@ import { OrderStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { ShiprocketService } from "../shiprocket/shiprocket.service.js";
 
-const BUYER_CANCELLABLE = [OrderStatus.PENDING, OrderStatus.CONFIRMED];
+const BUYER_CANCELLABLE: readonly OrderStatus[] = [
+  OrderStatus.PENDING,
+  OrderStatus.CONFIRMED,
+];
 const VENDOR_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
   [OrderStatus.CONFIRMED]: OrderStatus.PACKED,
   [OrderStatus.PACKED]: OrderStatus.SHIPPED,
@@ -77,22 +80,23 @@ export class OrderService {
     }
     return this.prisma.order.update({
       where: { id: orderId },
-      data: { status: OrderStatus.RETURN_REQUESTED },
+      data: { status: OrderStatus.RETURN_REQUESTED, notes: reason },
     });
   }
 
   // ─── Vendor ────────────────────────────────────────────────────────────────
 
-  async listForVendor(vendorId: string, page: number, limit: number) {
+  async listForVendor(vendorId: string, page: number, limit: number, status?: OrderStatus) {
+    const where = status ? { vendorId, status } : { vendorId };
     const [data, total] = await Promise.all([
       this.prisma.order.findMany({
-        where: { vendorId },
+        where,
         include: { items: { include: { variant: true } }, shipment: true },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
       }),
-      this.prisma.order.count({ where: { vendorId } }),
+      this.prisma.order.count({ where }),
     ]);
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
