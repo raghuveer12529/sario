@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { apiFetch } from "@/lib/api";
 import { AddToCart } from "./add-to-cart";
 import { ImageGallery } from "./image-gallery";
+import { WeaverCard } from "./weaver-card";
 
 interface ProductDetail {
   id: string;
@@ -133,21 +135,6 @@ export default async function ProductPage({ params }: { params: { slug: string }
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-extrabold text-[#1A1A1A] uppercase tracking-wider">Delivery Details</p>
-                  <button className="text-[10px] font-bold text-primary hover:underline uppercase tracking-widest">Check Pincode</button>
-                </div>
-                
-                {/* Pincode Entry Placeholder */}
-                <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50/50 p-1.5 focus-within:border-primary/30 transition-colors">
-                  <div className="flex h-8 items-center gap-2 px-2 text-[#9B9B9B]">
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                  </div>
-                  <input 
-                    type="text" 
-                    placeholder="Enter delivery pincode" 
-                    className="flex-1 bg-transparent text-sm font-bold text-[#1A1A1A] placeholder:text-gray-300 placeholder:font-medium focus:outline-none"
-                    maxLength={6}
-                  />
-                  <button className="rounded-lg bg-white px-4 py-1.5 text-[10px] font-extrabold text-primary border border-gray-100 shadow-sm hover:border-primary transition-all active:scale-95">CHECK</button>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-3">
@@ -217,10 +204,11 @@ export default async function ProductPage({ params }: { params: { slug: string }
             )}
 
             {product.weaverStory && (
-              <div className="rounded-xl border border-[#E8D5E8] bg-[#F9F0F9] p-5">
-                <p className="mb-2 text-sm font-bold text-primary">Weaver's Story</p>
-                <p className="text-sm text-[#4D4D4D] leading-relaxed">{product.weaverStory}</p>
-              </div>
+              <WeaverCard
+                vendorName={product.vendor.businessName}
+                region={product.region}
+                story={product.weaverStory}
+              />
             )}
           </div>
         </div>
