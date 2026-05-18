@@ -1,6 +1,8 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import type { Route } from "next";
 import { apiFetch } from "@/lib/api";
 import { AddToCart } from "./add-to-cart";
 import { ImageGallery } from "./image-gallery";
@@ -26,6 +28,39 @@ interface ProductDetail {
     inventory: { quantity: number; reservedQuantity: number };
   }>;
   images: Array<{ url: string; altText?: string; isPrimary: boolean }>;
+}
+
+async function getRelated(categoryName: string, excludeSlug: string): Promise<Array<{
+  id: string;
+  name: string;
+  slug: string;
+  images: Array<{ url: string; altText?: string }>;
+  variants: Array<{ pricePaise: number; mrpPaise: number }>;
+}>> {
+  try {
+    const res = await apiFetch<{
+      hits: Array<{
+        id: string;
+        name: string;
+        slug: string;
+        primaryImageUrl?: string;
+        minPricePaise: number;
+        mrpPaise?: number;
+      }>;
+    }>(`/catalog/search?q=${encodeURIComponent(categoryName)}&limit=5`);
+    return res.hits
+      .filter((h) => h.slug !== excludeSlug)
+      .slice(0, 4)
+      .map((h) => ({
+        id: h.id,
+        name: h.name,
+        slug: h.slug,
+        images: h.primaryImageUrl ? [{ url: h.primaryImageUrl }] : [],
+        variants: [{ pricePaise: h.minPricePaise, mrpPaise: h.mrpPaise ?? h.minPricePaise }],
+      }));
+  } catch {
+    return [];
+  }
 }
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
@@ -72,6 +107,10 @@ export default async function ProductPage({ params }: { params: { slug: string }
   } catch {
     notFound();
   }
+
+  const [relatedProducts] = await Promise.all([
+    getRelated(product.category.name, params.slug),
+  ]);
 
   const totalStock = product.variants.reduce(
     (s, v) => s + (v.inventory.quantity - v.inventory.reservedQuantity),
@@ -233,6 +272,64 @@ export default async function ProductPage({ params }: { params: { slug: string }
           </div>
         </div>
       </div>
+
+      {/* You May Also Like */}
+      {relatedProducts.length > 0 && (
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="font-display text-lg font-bold text-[#1A1A1A]">You May Also Like</h2>
+            <Link href={`/search?q=${encodeURIComponent(product.category.name)}` as Route} className="text-sm font-semibold text-primary hover:underline">
+              View All
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {relatedProducts.map((p) => {
+              const price = p.variants[0]?.pricePaise ?? 0;
+              const mrp = p.variants[0]?.mrpPaise ?? 0;
+              const discount = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+              return (
+                <Link key={p.id} href={`/p/${p.slug}` as Route} className="group block bg-white rounded-xl border border-[#F0F0F0] overflow-hidden hover:shadow-md transition-all">
+                  <div className="relative aspect-[3/4] overflow-hidden bg-[#F5F5F5]">
+                    {p.images[0] ? (
+                      <Image
+                        src={p.images[0].url}
+                        alt={p.images[0].altText ?? p.name}
+                        fill
+                        sizes="(max-width: 640px) 50vw, 25vw"
+                        className="object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <svg className="h-10 w-10 text-[#DDDDDD]" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24">
+                          <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" />
+                        </svg>
+                      </div>
+                    )}
+                    {discount > 0 && (
+                      <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm">
+                        {discount}% off
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <p className="line-clamp-2 text-sm font-semibold text-[#1A1A1A] leading-snug">{p.name}</p>
+                    <div className="mt-1.5 flex items-baseline gap-1.5">
+                      <span className="text-base font-bold text-[#1A1A1A]">
+                        ₹{Math.round(price / 100).toLocaleString("en-IN")}
+                      </span>
+                      {discount > 0 && (
+                        <span className="text-xs font-medium text-[#9B9B9B] line-through">
+                          ₹{Math.round(mrp / 100).toLocaleString("en-IN")}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
