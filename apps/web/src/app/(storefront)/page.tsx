@@ -143,45 +143,93 @@ export default async function HomePage() {
               </div>
             </div>
 
-            {/* Right — editorial image placeholder */}
+            {/* Right — editorial saree photograph */}
             <div className="relative hidden lg:block">
-              <div className="relative h-[480px] w-full overflow-hidden rounded-2xl border border-white/10 shadow-2xl shadow-black/40 bg-[#2D0845]">
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/20">
-                  <svg className="h-16 w-16" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24">
-                    <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" />
-                  </svg>
-                  <p className="text-xs font-medium tracking-widest uppercase">Editorial Photography</p>
-                </div>
+              <div className="relative h-[520px] w-full overflow-hidden rounded-2xl shadow-2xl shadow-black/50">
+                <Image
+                  src="https://images.unsplash.com/photo-1641699862936-be9f49b1c38d?auto=format&fit=crop&w=960&q=90&crop=top"
+                  alt="Tamil bride in purple and gold Kanjivaram silk saree"
+                  fill
+                  sizes="480px"
+                  className="object-cover object-top"
+                  priority
+                />
+                {/* Subtle dark gradient at bottom */}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#1E0533]/70 via-[#1E0533]/10 to-transparent" />
+                {/* Photo credit */}
+                <p className="absolute bottom-3 right-3 text-[9px] text-white/40 font-medium tracking-wider">
+                  Photo: Bella Pon Fruitsia / Unsplash
+                </p>
               </div>
               {/* GI badge overlay */}
-              <div className="absolute -bottom-4 -left-4 rounded-2xl border border-[#FDE68A]/30 bg-[#1E0533]/90 backdrop-blur-md px-5 py-4 shadow-xl">
+              <div className="absolute -bottom-4 -left-4 rounded-2xl border border-[#FDE68A]/30 bg-[#1E0533]/95 backdrop-blur-md px-5 py-4 shadow-xl">
                 <p className="text-[10px] font-bold text-[#FDE68A]/80 uppercase tracking-widest">Authenticity</p>
                 <p className="mt-0.5 text-sm font-bold text-white">GI Tag Certified Weaves</p>
+              </div>
+              {/* Floating stat card */}
+              <div className="absolute -top-4 -right-4 rounded-2xl border border-white/10 bg-white/10 backdrop-blur-md px-4 py-3 shadow-xl">
+                <p className="text-[10px] font-bold text-white/60 uppercase tracking-widest">Heritage Since</p>
+                <p className="mt-0.5 text-lg font-bold text-white">400+ Years</p>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Occasions strip */}
-      <section className="bg-white border-b border-[#F0F0F0] py-5">
+      {/* Occasions — visual card strip */}
+      <section className="bg-white border-b border-[#F0F0F0] py-6">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3 overflow-x-auto scrollbar-none">
-            <p className="shrink-0 text-xs font-bold uppercase tracking-widest text-[#9B9B9B]">Shop by Occasion</p>
-            <div className="h-4 w-px shrink-0 bg-[#E8E8E8]" />
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-[#9B9B9B]">Shop by Occasion</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              { label: "Wedding", href: "/search?occasion=wedding", icon: "💍" },
-              { label: "Festive", href: "/search?occasion=festive", icon: "🪔" },
-              { label: "Gifting", href: "/search?occasion=gifting", icon: "🎁" },
-              { label: "Everyday", href: "/search?occasion=everyday", icon: "🌸" },
+              {
+                label: "Wedding",
+                sub: "Bridal & Ceremony",
+                href: "/search?occasion=wedding",
+                img: "https://images.unsplash.com/photo-1727430228383-aa1fb59db8bf?auto=format&fit=crop&w=400&q=85&crop=top",
+                alt: "Woman in red bridal saree",
+              },
+              {
+                label: "Festive",
+                sub: "Puja & Celebrations",
+                href: "/search?occasion=festive",
+                img: "https://images.unsplash.com/flagged/photo-1551854716-8b811be39e7e?auto=format&fit=crop&w=400&q=85&crop=top",
+                alt: "Woman in green and gold festive saree",
+              },
+              {
+                label: "Gifting",
+                sub: "Curated for Her",
+                href: "/search?occasion=gifting",
+                img: "https://images.unsplash.com/photo-1588140686379-1b76a52103dc?auto=format&fit=crop&w=400&q=85",
+                alt: "Vibrant Indian textile fabric",
+              },
+              {
+                label: "Everyday",
+                sub: "Comfort & Style",
+                href: "/search?occasion=everyday",
+                img: "https://images.unsplash.com/photo-1610189012906-4c0aa9b9781e?auto=format&fit=crop&w=400&q=85&crop=top",
+                alt: "Woman in blue and yellow cotton saree",
+              },
             ].map((o) => (
               <Link
                 key={o.label}
                 href={o.href as Route}
-                className="shrink-0 flex items-center gap-2 rounded-full border border-[#E8E8E8] bg-[#FAFAFA] px-5 py-2.5 text-sm font-semibold text-[#4D4D4D] transition-all hover:border-primary hover:text-primary hover:bg-primary/5"
+                className="group relative overflow-hidden rounded-2xl aspect-[3/2] sm:aspect-[2/3] block"
               >
-                <span className="text-base leading-none">{o.icon}</span>
-                {o.label}
+                <Image
+                  src={o.img}
+                  alt={o.alt}
+                  fill
+                  sizes="(max-width: 640px) 50vw, 25vw"
+                  className="object-cover object-top transition-transform duration-500 group-hover:scale-105"
+                />
+                {/* Gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                {/* Text */}
+                <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
+                  <p className="text-base font-bold text-white leading-tight">{o.label}</p>
+                  <p className="text-[11px] text-white/70 mt-0.5">{o.sub}</p>
+                </div>
               </Link>
             ))}
           </div>
@@ -240,6 +288,78 @@ export default async function HomePage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Heritage Edit — editorial image gallery */}
+      <section className="mt-3 bg-[#1E0533] py-10">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mb-6 flex items-end justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#FDE68A]/70 mb-1">The Heritage Edit</p>
+              <h2 className="font-display text-2xl font-bold text-white">Craft Stories from the Loom</h2>
+            </div>
+            <Link href="/search" className="text-sm font-semibold text-white/60 hover:text-white transition-colors">
+              Explore All →
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3 lg:grid-rows-2">
+            {/* Large feature image — spans 2 rows on desktop */}
+            <div className="relative overflow-hidden rounded-2xl lg:row-span-2 aspect-[4/3] lg:aspect-auto">
+              <Image
+                src="https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=800&q=88&crop=top"
+                alt="Woman in red and brown Banarasi silk saree"
+                fill
+                sizes="(max-width: 1024px) 100vw, 33vw"
+                className="object-cover object-top"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+              <div className="absolute bottom-0 left-0 right-0 p-5">
+                <span className="inline-block rounded-full border border-[#FDE68A]/40 bg-[#FDE68A]/10 px-2.5 py-0.5 text-[10px] font-bold text-[#FDE68A] uppercase tracking-widest mb-2">
+                  Banarasi Silk
+                </span>
+                <p className="font-display text-xl font-bold text-white leading-tight">
+                  Woven with Gold, Worn with Grace
+                </p>
+                <p className="mt-1 text-xs text-white/60">Varanasi craft cluster · GI Certified</p>
+              </div>
+            </div>
+            {/* Top-right image */}
+            <div className="relative overflow-hidden rounded-2xl lg:col-span-2 aspect-[16/7]">
+              <Image
+                src="https://images.unsplash.com/photo-1610189026205-27510cfc52f8?auto=format&fit=crop&w=1200&q=85&crop=center"
+                alt="Women in pink and purple silk sarees"
+                fill
+                sizes="(max-width: 1024px) 100vw, 66vw"
+                className="object-cover object-center"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-transparent to-transparent" />
+              <div className="absolute bottom-0 left-0 p-5">
+                <span className="inline-block rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-white/80 uppercase tracking-widest mb-2 backdrop-blur-sm">
+                  Festive Collection
+                </span>
+                <p className="font-display text-lg font-bold text-white">Silk for Every Celebration</p>
+              </div>
+            </div>
+            {/* Bottom-right image */}
+            <div className="relative overflow-hidden rounded-2xl lg:col-span-2 aspect-[16/7]">
+              <Image
+                src="https://images.unsplash.com/photo-1676696706907-0e04665b80bd?auto=format&fit=crop&w=1200&q=85"
+                alt="Teal silk fabric weave close-up"
+                fill
+                sizes="(max-width: 1024px) 100vw, 66vw"
+                className="object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
+              <div className="absolute bottom-0 left-0 p-5">
+                <span className="inline-block rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-white/80 uppercase tracking-widest mb-2 backdrop-blur-sm">
+                  The Weave
+                </span>
+                <p className="font-display text-lg font-bold text-white">Every Thread Tells a Story</p>
+                <p className="mt-1 text-xs text-white/60">Hand-woven on traditional pit looms</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
