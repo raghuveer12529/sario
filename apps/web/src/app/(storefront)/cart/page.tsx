@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { apiFetch } from "@/lib/api";
 import { formatPaise } from "@sario/ui";
 import { useAuth } from "@/hooks/use-auth";
@@ -172,10 +173,12 @@ export default function CartPage() {
                 <div key={item.id} className={`group flex gap-4 rounded-2xl border border-[#F0F0F0] bg-white p-4 shadow-sm transition-all hover:shadow-md ${isUpdating ? "opacity-60 grayscale" : ""} ${isOutOfStock ? "border-red-200 bg-red-50/20" : ""}`}>
                   <div className="relative h-32 w-24 shrink-0 overflow-hidden rounded-xl bg-gray-50 border border-gray-100 shadow-inner">
                     {item.variant.images[0] && (
-                      <img
+                      <Image
                         src={item.variant.images[0].url}
                         alt={item.variant.product.name}
-                        className="h-full w-full object-cover"
+                        fill
+                        sizes="96px"
+                        className="object-cover"
                       />
                     )}
                     {isOutOfStock && (
@@ -268,17 +271,19 @@ export default function CartPage() {
                 )}
               </div>
               <div className="px-6 pb-6">
-                <Link
-                  href={hasOutOfStock ? "#" : "/checkout"}
-                  className={`block w-full rounded-xl py-4 text-center text-sm font-extrabold shadow-lg transition-all active:scale-[0.98] ${
-                    hasOutOfStock 
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed shadow-none" 
-                      : "bg-primary text-white shadow-primary/20 hover:opacity-90"
-                  }`}
-                  onClick={(e) => hasOutOfStock && e.preventDefault()}
-                >
-                  {hasOutOfStock ? "Adjust Quantities" : "Place Order"}
-                </Link>
+                {hasOutOfStock ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-center">
+                    <p className="text-sm font-bold text-red-700">Some items exceed available stock</p>
+                    <p className="mt-1 text-xs text-red-500">Reduce quantities above before proceeding</p>
+                  </div>
+                ) : (
+                  <Link
+                    href="/checkout"
+                    className="block w-full rounded-xl bg-primary py-4 text-center text-sm font-extrabold text-white shadow-lg shadow-primary/20 hover:opacity-90 transition-all active:scale-[0.98]"
+                  >
+                    Proceed to Checkout
+                  </Link>
+                )}
                 {hasOutOfStock && (
                   <p className="mt-3 text-center text-[10px] font-bold text-red-500 uppercase tracking-tight">
                     Some items exceed available stock

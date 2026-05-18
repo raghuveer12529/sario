@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import Script from "next/script";
 import { apiFetch } from "@/lib/api";
@@ -16,6 +17,17 @@ interface Address {
   city: string;
   state: string;
   pincode: string;
+}
+
+interface CartLineItem {
+  variantId: string;
+  quantity: number;
+  pricePaise: number;
+  variant: {
+    name: string;
+    product: { name: string; slug: string };
+    images: Array<{ url: string }>;
+  };
 }
 
 interface CartSummary {
@@ -49,6 +61,9 @@ export default function CheckoutPage() {
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const [cart, setCart] = useState<CartSummary | null>(null);
+  const [cartItems, setCartItems] = useState<CartLineItem[]>([]);
+  const [orderNumber, setOrderNumber] = useState<string | null>(null);
+  const [estimatedDelivery, setEstimatedDelivery] = useState<string | null>(null);
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +79,7 @@ export default function CheckoutPage() {
     // Load saved addresses
     apiFetch<Address[]>("/me/addresses").then((data) => {
       setAddresses(data);
-      if (data.length > 0) {
+      if (data.length > 0 && data[0]) {
         setSelectedAddressId(data[0].id);
         setShowNewForm(false);
       } else {
@@ -72,12 +87,14 @@ export default function CheckoutPage() {
       }
     }).catch(() => setShowNewForm(true));
 
-    // Load cart summary from server
-    apiFetch<{ items: Array<{ pricePaise: number; quantity: number }> }>("/cart")
+    // Load cart with full items
+    apiFetch<{ items: CartLineItem[] }>("/cart")
       .then((c) => {
-        const subtotal = c.items.reduce((s, i) => s + i.pricePaise * i.quantity, 0);
+        const items = c.items ?? [];
+        setCartItems(items);
+        const subtotal = items.reduce((s, i) => s + i.pricePaise * i.quantity, 0);
         const shipping = subtotal >= 200000 ? 0 : 5000;
-        setCart({ subtotal, shipping, total: subtotal + shipping, itemCount: c.items.length });
+        setCart({ subtotal, shipping, total: subtotal + shipping, itemCount: items.length });
       })
       .catch(() => null);
   }, [isAuthenticated, authLoading]);
@@ -117,6 +134,12 @@ export default function CheckoutPage() {
     }
   };
 
+  interface RazorpayResponse {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }
+
   const handlePayment = (razorpayOrderId: string, amountPaise: number) => {
     const options = {
       key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
@@ -125,10 +148,10 @@ export default function CheckoutPage() {
       name: "Sario",
       description: "Saree Purchase",
       order_id: razorpayOrderId,
-      handler: async (response: any) => {
+      handler: async (response: RazorpayResponse) => {
         setLoading(true);
         try {
-          await apiFetch("/checkout/verify", {
+          const result = await apiFetch<{ orderNumber?: string }>("/checkout/verify", {
             method: "POST",
             body: JSON.stringify({
               razorpayOrderId: response.razorpay_order_id,
@@ -136,17 +159,21 @@ export default function CheckoutPage() {
               razorpaySignature: response.razorpay_signature,
             }),
           });
+          if (result.orderNumber) setOrderNumber(result.orderNumber);
+          const eta = new Date();
+          eta.setDate(eta.getDate() + 7);
+          setEstimatedDelivery(eta.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }));
           setStep("done");
-        } catch (e) {
+        } catch {
           setError("Payment verification failed. If money was deducted, please contact support.");
         } finally {
           setLoading(false);
         }
       },
       prefill: {
-        name: user?.name || "",
-        contact: user?.phone || "",
-        email: (user as any)?.email || "",
+        name: user?.name ?? "",
+        contact: user?.phone ?? "",
+        email: user?.email ?? "",
       },
       theme: {
         color: "#9333ea",
@@ -168,8 +195,12 @@ export default function CheckoutPage() {
     setLoading(true);
     try {
       await apiFetch(`/checkout/dev/confirm/${razorpayOrderId}`, { method: "POST" });
+      const eta = new Date();
+      eta.setDate(eta.getDate() + 7);
+      setEstimatedDelivery(eta.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }));
+      setOrderNumber(`ORD-${Date.now().toString(36).toUpperCase()}`);
       setStep("done");
-    } catch (e) {
+    } catch {
       setError("Dev confirmation failed.");
     } finally {
       setLoading(false);
@@ -220,21 +251,43 @@ export default function CheckoutPage() {
   if (step === "done") {
     return (
       <main className="bg-[#F5F5F5] min-h-screen flex items-center justify-center px-4 py-16">
-        <div className="w-full max-w-sm rounded-xl border border-[#F0F0F0] bg-white p-8 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#E6F9ED]">
-            <svg className="h-8 w-8 text-[#26A541]" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-              <path d="M20 6L9 17l-5-5" />
-            </svg>
+        <div className="w-full max-w-md rounded-2xl border border-[#F0F0F0] bg-white p-8 shadow-lg">
+          <div className="text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#E6F9ED]">
+              <svg className="h-8 w-8 text-[#26A541]" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-[#1A1A1A]">Order Confirmed</h1>
+            <p className="mt-2 text-sm text-[#696969] leading-relaxed">
+              Your saree is being prepared by the weaver. You&apos;ll receive an SMS and email confirmation shortly.
+            </p>
           </div>
-          <h1 className="text-xl font-bold text-[#1A1A1A]">Order Placed!</h1>
-          <p className="mt-2 text-sm text-[#696969]">
-            Your order has been confirmed. You'll receive a confirmation SMS shortly.
-          </p>
+
+          <div className="mt-6 rounded-xl border border-[#F0F0F0] bg-[#FAFAFA] divide-y divide-[#F0F0F0]">
+            {orderNumber && (
+              <div className="flex justify-between px-4 py-3">
+                <span className="text-xs font-bold text-[#9B9B9B] uppercase tracking-wider">Order Number</span>
+                <span className="text-sm font-bold text-[#1A1A1A] font-mono">{orderNumber}</span>
+              </div>
+            )}
+            {estimatedDelivery && (
+              <div className="flex justify-between px-4 py-3">
+                <span className="text-xs font-bold text-[#9B9B9B] uppercase tracking-wider">Est. Delivery</span>
+                <span className="text-sm font-bold text-[#1A1A1A]">by {estimatedDelivery}</span>
+              </div>
+            )}
+            <div className="flex justify-between px-4 py-3">
+              <span className="text-xs font-bold text-[#9B9B9B] uppercase tracking-wider">Confirmation</span>
+              <span className="text-sm font-semibold text-[#1A1A1A]">SMS + Email</span>
+            </div>
+          </div>
+
           <div className="mt-6 flex flex-col gap-3">
-            <Link href="/account/orders" className="block rounded-xl bg-primary py-3 text-sm font-bold text-white hover:opacity-90">
-              View My Orders
+            <Link href="/account/orders" className="block rounded-xl bg-primary py-3.5 text-center text-sm font-bold text-white hover:opacity-90 transition-all">
+              Track My Order
             </Link>
-            <Link href="/" className="block rounded-xl border border-[#E8E8E8] py-3 text-sm font-medium text-[#4D4D4D] hover:border-primary hover:text-primary">
+            <Link href="/" className="block rounded-xl border border-[#E8E8E8] py-3.5 text-center text-sm font-medium text-[#4D4D4D] hover:border-primary hover:text-primary transition-all">
               Continue Shopping
             </Link>
           </div>
@@ -370,6 +423,41 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
+                {/* Cart line items on review step */}
+                {cartItems.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#9B9B9B]">
+                      Order Items ({cartItems.length})
+                    </p>
+                    <div className="divide-y divide-[#F0F0F0] rounded-xl border border-[#E8E8E8] overflow-hidden">
+                      {cartItems.map((item) => (
+                        <div key={item.variantId} className="flex items-center gap-3 bg-white px-4 py-3">
+                          {item.variant.images[0] && (
+                            <div className="relative h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-[#F5F5F5] border border-[#F0F0F0]">
+                              <Image
+                                src={item.variant.images[0].url}
+                                alt={item.variant.product.name}
+                                fill
+                                sizes="44px"
+                                className="object-cover"
+                              />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-[#1A1A1A] leading-tight line-clamp-1">
+                              {item.variant.product.name}
+                            </p>
+                            <p className="text-[11px] text-[#9B9B9B] mt-0.5">{item.variant.name} · Qty {item.quantity}</p>
+                          </div>
+                          <p className="shrink-0 text-sm font-bold text-[#1A1A1A]">
+                            {formatPaise(item.pricePaise * item.quantity)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="rounded-xl bg-[#FDF8EE] border border-[#F9EBC8] px-4 py-4 flex items-center gap-3">
                   <div className="h-10 w-10 rounded-full bg-[#F5E0A3] flex items-center justify-center shrink-0">
                     <svg className="h-6 w-6 text-[#856404]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -419,12 +507,14 @@ export default function CheckoutPage() {
                     <span className="text-base font-extrabold text-primary">{formatPaise(cart.total)}</span>
                   </div>
                 </div>
-                <div className="bg-[#F0F9F1] px-5 py-3 border-t border-[#DDF0E0]">
-                  <p className="text-[11px] font-medium text-[#26A541] flex items-center gap-1.5">
-                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" /></svg>
-                    You are saving {formatPaise(cart.shipping)} on delivery!
-                  </p>
-                </div>
+                {cart.shipping === 0 && (
+                  <div className="bg-[#F0F9F1] px-5 py-3 border-t border-[#DDF0E0]">
+                    <p className="text-[11px] font-medium text-[#26A541] flex items-center gap-1.5">
+                      <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" /></svg>
+                      Free delivery on this order!
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
