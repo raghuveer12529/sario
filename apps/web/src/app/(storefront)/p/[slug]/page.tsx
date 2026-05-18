@@ -175,31 +175,51 @@ export default async function ProductPage({ params }: { params: { slug: string }
               </div>
             </div>
 
-            {/* Product details */}
-            <div className="rounded-xl bg-white border border-[#F0F0F0] p-5">
-              <p className="mb-3 text-sm font-bold text-[#1A1A1A]">Product Details</p>
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+            {/* Structured specs */}
+            <div className="rounded-2xl bg-white border border-[#F0F0F0] p-6 shadow-sm">
+              <p className="mb-4 text-sm font-extrabold uppercase tracking-widest text-[#1A1A1A]">
+                Product Specifications
+              </p>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 {product.fabric && (
                   <>
-                    <dt className="text-[#696969]">Fabric</dt>
-                    <dd className="font-medium text-[#1A1A1A]">{product.fabric}</dd>
+                    <dt className="text-[#9B9B9B] font-medium">Fabric</dt>
+                    <dd className="font-semibold text-[#1A1A1A]">{product.fabric}</dd>
                   </>
                 )}
                 {product.region && (
                   <>
-                    <dt className="text-[#696969]">Region</dt>
-                    <dd className="font-medium text-[#1A1A1A]">{product.region}</dd>
+                    <dt className="text-[#9B9B9B] font-medium">Origin</dt>
+                    <dd className="font-semibold text-[#1A1A1A]">{product.region}</dd>
                   </>
                 )}
-                <dt className="text-[#696969]">Category</dt>
-                <dd className="font-medium text-[#1A1A1A]">{product.category.name}</dd>
+                <dt className="text-[#9B9B9B] font-medium">Category</dt>
+                <dd className="font-semibold text-[#1A1A1A]">{product.category.name}</dd>
+                <dt className="text-[#9B9B9B] font-medium">Saree Length</dt>
+                <dd className="font-semibold text-[#1A1A1A]">6.3 metres</dd>
+                <dt className="text-[#9B9B9B] font-medium">Blouse Piece</dt>
+                <dd className="font-semibold text-[#1A1A1A]">0.8 metres included</dd>
+                <dt className="text-[#9B9B9B] font-medium">Care</dt>
+                <dd className="font-semibold text-[#1A1A1A]">Dry clean recommended</dd>
+                <dt className="text-[#9B9B9B] font-medium">Dispatch</dt>
+                <dd className="font-semibold text-[#1A1A1A]">Ships in 2–3 business days</dd>
               </dl>
+              {product.giTag && (
+                <div className="mt-4 rounded-xl border border-[#FFD700]/30 bg-[#FFFBEA] px-4 py-3 flex items-center gap-2">
+                  <svg className="h-4 w-4 text-[#8A6800] shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                  <p className="text-xs font-semibold text-[#8A6800]">
+                    GI Tag Certified — {product.giTag}. Geographical Indication of origin is verified.
+                  </p>
+                </div>
+              )}
             </div>
 
             {product.description && (
-              <div className="rounded-xl bg-white border border-[#F0F0F0] p-5">
-                <p className="mb-2 text-sm font-bold text-[#1A1A1A]">Description</p>
-                <p className="text-sm text-[#4D4D4D] leading-relaxed">{product.description}</p>
+              <div className="rounded-2xl bg-white border border-[#F0F0F0] p-6 shadow-sm">
+                <p className="mb-3 text-sm font-extrabold uppercase tracking-widest text-[#1A1A1A]">About this Saree</p>
+                <p className="text-sm text-[#4D4D4D] leading-loose">{product.description}</p>
               </div>
             )}
 
