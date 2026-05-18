@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { apiFetch } from "@/lib/api";
 import type { Metadata } from "next";
+import type { Route } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { WishlistButton } from "./wishlist-button";
@@ -176,7 +177,7 @@ export default async function HomePage() {
             ].map((o) => (
               <Link
                 key={o.label}
-                href={o.href as never}
+                href={o.href as Route}
                 className="shrink-0 flex items-center gap-2 rounded-full border border-[#E8E8E8] bg-[#FAFAFA] px-5 py-2.5 text-sm font-semibold text-[#4D4D4D] transition-all hover:border-primary hover:text-primary hover:bg-primary/5"
               >
                 <span className="text-base leading-none">{o.icon}</span>
@@ -321,7 +322,6 @@ function ProductGrid({ products }: { products: Product[] }) {
                       <span className="text-xs text-[#9B9B9B] line-through">
                         ₹{Math.round(mrp / 100).toLocaleString("en-IN")}
                       </span>
-                      <span className="text-xs font-medium text-[#9B9B9B]">{discount}% off</span>
                     </>
                   )}
                 </div>
