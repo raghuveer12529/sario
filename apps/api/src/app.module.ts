@@ -18,6 +18,7 @@ import { ReturnsModule } from "./returns/returns.module.js";
 import { NotificationModule } from "./notification/notification.module.js";
 import { AdminModule } from "./admin/admin.module.js";
 import { AdminProductController } from "./catalog/admin-product.controller.js";
+import { QueueModule } from "./queue/queue.module.js";
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AdminProductController } from "./catalog/admin-product.controller.js";
     OrderModule,
     ReturnsModule,
     AdminModule,
+    QueueModule,
   ],
   controllers: [AppController, AdminProductController],
   providers: [AppService],
