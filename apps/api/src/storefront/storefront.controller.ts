@@ -25,6 +25,7 @@ export class StorefrontController {
   @ApiQuery({ name: "categoryId", required: false })
   @ApiQuery({ name: "region", required: false })
   @ApiQuery({ name: "fabric", required: false })
+  @ApiQuery({ name: "occasion", required: false })
   @ApiQuery({ name: "minPrice", required: false })
   @ApiQuery({ name: "maxPrice", required: false })
   @ApiQuery({ name: "sort", required: false, description: "e.g. minPricePaise:asc" })
@@ -35,6 +36,7 @@ export class StorefrontController {
     @Query("categoryId") categoryId?: string,
     @Query("region") region?: string,
     @Query("fabric") fabric?: string,
+    @Query("occasion") occasion?: string,
     @Query("minPrice", new DefaultValuePipe(0), ParseIntPipe) minPrice = 0,
     @Query("maxPrice") maxPrice?: string,
     @Query("sort") sort?: string,
@@ -46,6 +48,7 @@ export class StorefrontController {
       ...(categoryId ? { categoryId } : {}),
       ...(region ? { region } : {}),
       ...(fabric ? { fabric } : {}),
+      ...(occasion ? { occasion } : {}),
       ...(minPrice ? { minPrice } : {}),
       ...(maxPrice ? { maxPrice: parseInt(maxPrice) } : {}),
       ...(sort ? { sort } : {}),

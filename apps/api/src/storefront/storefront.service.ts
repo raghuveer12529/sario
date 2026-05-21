@@ -56,6 +56,7 @@ export class StorefrontService {
     categoryId?: string;
     region?: string;
     fabric?: string;
+    occasion?: string;
     minPrice?: number;
     maxPrice?: number;
     sort?: string;
@@ -74,6 +75,7 @@ export class StorefrontService {
     }
     if (opts.region) filters.push(`region = "${opts.region}"`);
     if (opts.fabric) filters.push(`fabric = "${opts.fabric}"`);
+    if (opts.occasion) filters.push(`occasion = "${opts.occasion}"`);
     if (opts.minPrice) filters.push(`minPricePaise >= ${opts.minPrice}`);
     if (opts.maxPrice) filters.push(`minPricePaise <= ${opts.maxPrice}`);
 

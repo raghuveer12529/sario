@@ -13,6 +13,7 @@ interface SearchableProduct {
   vendorId: string;
   minPricePaise: number;
   primaryImageUrl?: string;
+  occasion: string[];
 }
 
 @Injectable()
@@ -45,7 +46,7 @@ export class MeilisearchService implements OnModuleInit {
       q: query,
       limit,
       offset,
-      facets: ["region", "fabric", "categoryId"],
+      facets: ["region", "fabric", "categoryId", "occasion"],
       ...filters,
     };
     return this.request<{ hits: SearchableProduct[]; estimatedTotalHits: number }>(
@@ -58,8 +59,8 @@ export class MeilisearchService implements OnModuleInit {
   private async setupIndex(): Promise<void> {
     try {
       await this.request("PATCH", `/indexes/${this.index}/settings`, {
-        searchableAttributes: ["name", "description", "fabric", "region", "tags"],
-        filterableAttributes: ["categoryId", "vendorId", "region", "fabric", "minPricePaise"],
+        searchableAttributes: ["name", "description", "fabric", "region", "tags", "occasion"],
+        filterableAttributes: ["categoryId", "vendorId", "region", "fabric", "minPricePaise", "occasion"],
         sortableAttributes: ["minPricePaise"],
         typoTolerance: { enabled: true, minWordSizeForTypos: { oneTypo: 4, twoTypos: 8 } },
         synonyms: {
