@@ -129,6 +129,7 @@ export class ProductService {
       fabric: product.fabric,
       region: product.region,
       tags: product.tags,
+      occasion: product.occasion,
       categoryId: product.categoryId,
       vendorId: product.vendorId,
       minPricePaise,

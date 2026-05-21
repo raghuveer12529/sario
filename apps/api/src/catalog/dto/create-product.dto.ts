@@ -26,6 +26,12 @@ export class CreateProductDto {
   @ApiPropertyOptional() @IsString() @IsOptional() hsnCode?: string;
   @ApiPropertyOptional() @IsArray() @IsString({ each: true }) @IsOptional() tags?: string[];
 
+  @ApiPropertyOptional({ type: [String], example: ["Wedding", "Festival"] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  occasion?: string[];
+
   @ApiProperty({ type: [CreateVariantDto] })
   @IsArray()
   @ValidateNested({ each: true })

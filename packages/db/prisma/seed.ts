@@ -22,29 +22,171 @@ async function main() {
   });
 
   // ── Categories ──────────────────────────────────────────────────────────────
-  const [silkCat, cottonCat, silkCottonCat] = await Promise.all([
+  const ucat = (slug: string, name: string, sortOrder: number, gstBps = 500, parentId?: string) =>
     prisma.category.upsert({
-      where: { slug: "silk-sarees" },
+      where: { slug },
       update: {},
-      create: { name: "Silk Sarees", slug: "silk-sarees", gstBps: 500, sortOrder: 1 },
-    }),
-    prisma.category.upsert({
-      where: { slug: "cotton-sarees" },
-      update: {},
-      create: { name: "Cotton Sarees", slug: "cotton-sarees", gstBps: 500, sortOrder: 2 },
-    }),
-    prisma.category.upsert({
-      where: { slug: "silk-cotton-sarees" },
-      update: {},
-      create: { name: "Silk-Cotton Sarees", slug: "silk-cotton-sarees", gstBps: 500, sortOrder: 3 },
-    }),
+      create: { name, slug, gstBps, sortOrder, ...(parentId ? { parentId } : {}) },
+    });
+
+  // Level 0 — top-level departments
+  const [ethnicWear, westernWear, fusionWear, lingerie, maternity, accessories, beauty] = await Promise.all([
+    ucat("ethnic-wear",   "Ethnic Wear",             1),
+    ucat("western-wear",  "Western Wear",             2),
+    ucat("fusion-wear",   "Fusion Wear",              3),
+    ucat("lingerie",      "Lingerie & Sleepwear",     4, 1200),
+    ucat("maternity",     "Maternity",                5),
+    ucat("accessories",   "Accessories",              6, 300),
+    ucat("beauty",        "Beauty & Personal Care",   7, 1800),
   ]);
 
+  // Level 1 — Ethnic Wear children
+  const [sareesCat, salwarSuits, kurtaKurtis, lehengas, dupattas, blouses, shararaDhoti] = await Promise.all([
+    ucat("sarees",          "Sarees",               1, 500, ethnicWear.id),
+    ucat("salwar-suits",    "Salwar Suits",          2, 500, ethnicWear.id),
+    ucat("kurtas-kurtis",   "Kurtas & Kurtis",      3, 500, ethnicWear.id),
+    ucat("lehengas",        "Lehengas",              4, 500, ethnicWear.id),
+    ucat("dupattas-stoles", "Dupattas & Stoles",    5, 500, ethnicWear.id),
+    ucat("blouses",         "Blouses",               6, 500, ethnicWear.id),
+    ucat("sharara-dhoti",   "Sharara & Dhoti Sets", 7, 500, ethnicWear.id),
+  ]);
+
+  // Level 2 — Sarees subcategories (silk / cotton / silk-cotton kept as-is for product references)
+  const [silkCat, cottonCat, silkCottonCat] = await Promise.all([
+    ucat("silk-sarees",        "Silk Sarees",        1, 500, sareesCat.id),
+    ucat("cotton-sarees",      "Cotton Sarees",      2, 500, sareesCat.id),
+    ucat("silk-cotton-sarees", "Silk-Cotton Sarees", 3, 500, sareesCat.id),
+  ]);
   await Promise.all([
-    prisma.category.upsert({ where: { slug: "kanjivaram" }, update: {}, create: { name: "Kanjivaram", slug: "kanjivaram", parentId: silkCat.id, gstBps: 500, sortOrder: 1 } }),
-    prisma.category.upsert({ where: { slug: "banarasi" }, update: {}, create: { name: "Banarasi", slug: "banarasi", parentId: silkCat.id, gstBps: 500, sortOrder: 2 } }),
-    prisma.category.upsert({ where: { slug: "pochampally" }, update: {}, create: { name: "Pochampally", slug: "pochampally", parentId: cottonCat.id, gstBps: 500, sortOrder: 3 } }),
-    prisma.category.upsert({ where: { slug: "synthetic-sarees" }, update: {}, create: { name: "Synthetic Sarees", slug: "synthetic-sarees", gstBps: 1200, sortOrder: 4 } }),
+    ucat("georgette-sarees", "Georgette Sarees", 4, 1200, sareesCat.id),
+    ucat("chiffon-sarees",   "Chiffon Sarees",   5, 1200, sareesCat.id),
+    ucat("net-sarees",       "Net Sarees",        6, 1200, sareesCat.id),
+    ucat("linen-sarees",     "Linen Sarees",      7,  500, sareesCat.id),
+    ucat("organza-sarees",   "Organza Sarees",    8, 1200, sareesCat.id),
+  ]);
+
+  // Level 3 — Silk Sarees subcategories
+  await Promise.all([
+    ucat("kanjivaram",   "Kanjivaram",   1, 500, silkCat.id),
+    ucat("banarasi",     "Banarasi",     2, 500, silkCat.id),
+    ucat("paithani",     "Paithani",     3, 500, silkCat.id),
+    ucat("mysore-silk",  "Mysore Silk",  4, 500, silkCat.id),
+    ucat("tussar-silk",  "Tussar Silk",  5, 500, silkCat.id),
+    ucat("uppada-silk",  "Uppada Silk",  6, 500, silkCat.id),
+  ]);
+
+  // Level 3 — Cotton Sarees subcategories
+  await Promise.all([
+    ucat("pochampally",     "Pochampally",     1, 500, cottonCat.id),
+    ucat("chanderi-cotton", "Chanderi Cotton", 2, 500, cottonCat.id),
+    ucat("linen-cotton",    "Linen Cotton",    3, 500, cottonCat.id),
+    ucat("kalamkari",       "Kalamkari",       4, 500, cottonCat.id),
+    ucat("sambalpuri",      "Sambalpuri",      5, 500, cottonCat.id),
+  ]);
+
+  // Level 3 — Silk-Cotton subcategories
+  await Promise.all([
+    ucat("chanderi-silk-cotton", "Chanderi Silk-Cotton", 1, 500, silkCottonCat.id),
+    ucat("gadwal",               "Gadwal",               2, 500, silkCottonCat.id),
+    ucat("ikkat-silk-cotton",    "Ikkat Silk-Cotton",    3, 500, silkCottonCat.id),
+  ]);
+
+  // Level 2 — Salwar Suits subcategories
+  await Promise.all([
+    ucat("anarkali",       "Anarkali",       1, 500, salwarSuits.id),
+    ucat("straight-cut",   "Straight Cut",   2, 500, salwarSuits.id),
+    ucat("palazzo-set",    "Palazzo Set",    3, 500, salwarSuits.id),
+    ucat("patiala",        "Patiala",        4, 500, salwarSuits.id),
+    ucat("pakistani-suit", "Pakistani Style",5, 500, salwarSuits.id),
+  ]);
+
+  // Level 2 — Kurtas & Kurtis subcategories
+  await Promise.all([
+    ucat("a-line-kurti",     "A-Line",     1, 500, kurtaKurtis.id),
+    ucat("straight-kurti",   "Straight",   2, 500, kurtaKurtis.id),
+    ucat("flared-kurti",     "Flared",     3, 500, kurtaKurtis.id),
+    ucat("asymmetric-kurti", "Asymmetric", 4, 500, kurtaKurtis.id),
+    ucat("high-low-kurti",   "High-Low",   5, 500, kurtaKurtis.id),
+  ]);
+
+  // Level 2 — Lehenga subcategories
+  await Promise.all([
+    ucat("bridal-lehenga",    "Bridal",    1, 500, lehengas.id),
+    ucat("party-lehenga",     "Party Wear",2, 500, lehengas.id),
+    ucat("casual-lehenga",    "Casual",    3, 500, lehengas.id),
+  ]);
+
+  // Level 2 — Blouses subcategories
+  await Promise.all([
+    ucat("readymade-blouse",  "Readymade",  1, 500, blouses.id),
+    ucat("unstitched-blouse", "Unstitched", 2, 500, blouses.id),
+  ]);
+
+  // Level 1 — Western Wear children
+  await Promise.all([
+    ucat("tops-tshirts",      "Tops & T-Shirts",    1, 1200, westernWear.id),
+    ucat("dresses-jumpsuits", "Dresses & Jumpsuits",2, 1200, westernWear.id),
+    ucat("jeans-trousers",    "Jeans & Trousers",   3, 1200, westernWear.id),
+    ucat("skirts",            "Skirts",              4, 1200, westernWear.id),
+    ucat("coord-sets",        "Co-ord Sets",         5, 1200, westernWear.id),
+    ucat("sweatshirts",       "Sweatshirts & Hoodies",6,1200, westernWear.id),
+  ]);
+
+  // Level 1 — Fusion Wear children
+  await Promise.all([
+    ucat("indo-western-dresses", "Indo-Western Dresses", 1, 500, fusionWear.id),
+    ucat("cape-jacket-kurtas",   "Cape & Jacket Kurtas", 2, 500, fusionWear.id),
+    ucat("dhoti-sarees",         "Dhoti Sarees",          3, 500, fusionWear.id),
+    ucat("shirt-sarees",         "Shirt Sarees",           4, 500, fusionWear.id),
+  ]);
+
+  // Level 1 — Lingerie subcategories
+  await Promise.all([
+    ucat("bras-bralettes",   "Bras & Bralettes",    1, 1200, lingerie.id),
+    ucat("panties-shapewear","Panties & Shapewear", 2, 1200, lingerie.id),
+    ucat("nightwear",        "Nightgowns & Pyjamas",3, 1200, lingerie.id),
+    ucat("camisoles-slips",  "Camisoles & Slips",   4, 1200, lingerie.id),
+  ]);
+
+  // Level 1 — Maternity subcategories
+  await Promise.all([
+    ucat("maternity-kurtas",  "Maternity Kurtas",  1, 500, maternity.id),
+    ucat("maternity-dresses", "Maternity Dresses", 2, 500, maternity.id),
+    ucat("nursing-tops",      "Nursing Tops",       3, 500, maternity.id),
+  ]);
+
+  // Level 1 — Accessories children
+  const [jewellery, footwear] = await Promise.all([
+    ucat("jewellery",           "Jewellery",            1, 300, accessories.id),
+    ucat("handbags-clutches",   "Handbags & Clutches",  2, 1200, accessories.id),
+    ucat("footwear",            "Footwear",              3, 1200, accessories.id),
+    ucat("belts-hair-acc",      "Belts & Hair Accessories",4,1200, accessories.id),
+    ucat("sunglasses-watches",  "Sunglasses & Watches", 5, 1800, accessories.id),
+  ]).then(([j, , f]) => [j, f]);
+
+  // Level 2 — Jewellery subcategories
+  await Promise.all([
+    ucat("earrings",   "Earrings",   1, 300, jewellery.id),
+    ucat("necklaces",  "Necklaces",  2, 300, jewellery.id),
+    ucat("bangles",    "Bangles",    3, 300, jewellery.id),
+    ucat("maang-tikka","Maang Tikka",4, 300, jewellery.id),
+    ucat("rings",      "Rings",      5, 300, jewellery.id),
+  ]);
+
+  // Level 2 — Footwear subcategories
+  await Promise.all([
+    ucat("heels",      "Heels",      1, 1200, footwear.id),
+    ucat("flats",      "Flats",      2,  500, footwear.id),
+    ucat("kolhapuris", "Kolhapuris", 3,  500, footwear.id),
+    ucat("juttis",     "Juttis",     4,  500, footwear.id),
+    ucat("sandals",    "Sandals",    5,  500, footwear.id),
+  ]);
+
+  // Level 1 — Beauty subcategories
+  await Promise.all([
+    ucat("skincare", "Skincare", 1, 1800, beauty.id),
+    ucat("haircare", "Haircare", 2, 1800, beauty.id),
+    ucat("makeup",   "Makeup",   3, 1800, beauty.id),
   ]);
 
   // ── Buyers ──────────────────────────────────────────────────────────────────
@@ -460,6 +602,355 @@ async function main() {
     images: { create: [{ url: "https://images.unsplash.com/photo-1585842378054-ee2e52f94ba2?w=600&q=80", isPrimary: true, sortOrder: 0 }] },
   });
 
+  // ── Fetch category IDs not captured as variables ────────────────────────────
+  const [georgetteCat, chiffonCat, netCat, handbagsCat, skincareCat, haircareCat, makeupCat] = await Promise.all([
+    prisma.category.findUniqueOrThrow({ where: { slug: "georgette-sarees" } }),
+    prisma.category.findUniqueOrThrow({ where: { slug: "chiffon-sarees" } }),
+    prisma.category.findUniqueOrThrow({ where: { slug: "net-sarees" } }),
+    prisma.category.findUniqueOrThrow({ where: { slug: "handbags-clutches" } }),
+    prisma.category.findUniqueOrThrow({ where: { slug: "skincare" } }),
+    prisma.category.findUniqueOrThrow({ where: { slug: "haircare" } }),
+    prisma.category.findUniqueOrThrow({ where: { slug: "makeup" } }),
+  ]);
+
+  // ── Additional APPROVED products — new categories ────────────────────────────
+
+  // Georgette Sarees
+  await upsertProduct("georgette-floral-print-heavy-border", {
+    vendorId: rookash.id, categoryId: georgetteCat.id,
+    name: "Georgette Floral Print Saree — Heavy Border",
+    slug: "georgette-floral-print-heavy-border",
+    description: "Lightweight georgette with an all-over floral print and a heavily embellished stone-work border. Flows beautifully and is ideal for parties and festivals.",
+    fabric: "Georgette",
+    status: ProductStatus.APPROVED, qualityScore: 74, searchIndexedAt: new Date(),
+    tags: ["georgette", "printed", "party-wear", "festive"],
+    variants: {
+      create: [
+        { name: "Coral Pink", sku: "GEO-COR-001", pricePaise: 179900, mrpPaise: 229900, inventory: { create: { quantity: 15, reservedQuantity: 2 } } },
+        { name: "Teal Green", sku: "GEO-TEA-001", pricePaise: 179900, mrpPaise: 229900, inventory: { create: { quantity: 10, reservedQuantity: 0 } } },
+        { name: "Royal Blue", sku: "GEO-BLU-001", pricePaise: 189900, mrpPaise: 239900, inventory: { create: { quantity: 8,  reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1583391733956-6c78276477e2?w=800&q=80", altText: "Georgette saree", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  // Chiffon Sarees
+  await upsertProduct("chiffon-sequin-work-saree-midnight", {
+    vendorId: chanderi.id, categoryId: chiffonCat.id,
+    name: "Chiffon Saree with Sequin Work — Midnight Glam",
+    slug: "chiffon-sequin-work-saree-midnight",
+    description: "Sheer chiffon saree with hand-applied sequin work across the pallu and a plain body for a balanced look. Perfect for evening events.",
+    fabric: "Chiffon",
+    status: ProductStatus.APPROVED, qualityScore: 72, searchIndexedAt: new Date(),
+    tags: ["chiffon", "sequin", "evening", "party-wear"],
+    variants: {
+      create: [
+        { name: "Midnight Black", sku: "CHF-BLK-001", pricePaise: 149900, mrpPaise: 199900, inventory: { create: { quantity: 12, reservedQuantity: 0 } } },
+        { name: "Wine Red",       sku: "CHF-WIN-001", pricePaise: 149900, mrpPaise: 199900, inventory: { create: { quantity: 9,  reservedQuantity: 1 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?w=800&q=80", altText: "Chiffon sequin saree", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  // Net Sarees
+  await upsertProduct("net-saree-thread-embroidery-bridal", {
+    vendorId: rookash.id, categoryId: netCat.id,
+    name: "Net Saree with Thread Embroidery — Bridal",
+    slug: "net-saree-thread-embroidery-bridal",
+    description: "Sheer net saree with dense thread embroidery work on the pallu and borders. Comes with a matching stitched blouse. A favourite for wedding receptions.",
+    fabric: "Net",
+    status: ProductStatus.APPROVED, qualityScore: 80, searchIndexedAt: new Date(),
+    tags: ["net", "embroidery", "bridal", "reception", "wedding"],
+    variants: {
+      create: [
+        { name: "Champagne Gold", sku: "NET-CHA-001", pricePaise: 599900, mrpPaise: 749900, inventory: { create: { quantity: 5, reservedQuantity: 0 } } },
+        { name: "Blush Pink",     sku: "NET-BLU-001", pricePaise: 599900, mrpPaise: 749900, inventory: { create: { quantity: 4, reservedQuantity: 0 } } },
+        { name: "Ivory White",    sku: "NET-IVO-001", pricePaise: 649900, mrpPaise: 799900, inventory: { create: { quantity: 3, reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1631125915902-d8abe9225ff2?w=800&q=80", altText: "Net bridal saree", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  // Salwar Suits
+  await upsertProduct("lucknowi-chikankari-anarkali-suit", {
+    vendorId: rookash.id, categoryId: salwarSuits.id,
+    name: "Lucknowi Chikankari Anarkali Suit",
+    slug: "lucknowi-chikankari-anarkali-suit",
+    description: "Hand-embroidered Chikankari Anarkali suit in pure georgette. The delicate white threadwork on a pastel base is the hallmark of Lucknow's finest artisans. Set includes kurta, palazzo and dupatta.",
+    fabric: "Georgette", region: "Lucknow, Uttar Pradesh",
+    status: ProductStatus.APPROVED, qualityScore: 88, searchIndexedAt: new Date(),
+    tags: ["chikankari", "anarkali", "lucknow", "handembroidered", "festive"],
+    variants: {
+      create: [
+        { name: "Ivory",       sku: "CHK-IVO-001", pricePaise: 449900, mrpPaise: 549900, inventory: { create: { quantity: 8, reservedQuantity: 1 } } },
+        { name: "Mint Green",  sku: "CHK-MNT-001", pricePaise: 449900, mrpPaise: 549900, inventory: { create: { quantity: 6, reservedQuantity: 0 } } },
+        { name: "Powder Blue", sku: "CHK-PWD-001", pricePaise: 469900, mrpPaise: 569900, inventory: { create: { quantity: 5, reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800&q=80", altText: "Chikankari Anarkali suit", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  await upsertProduct("hand-block-print-cotton-straight-suit", {
+    vendorId: chanderi.id, categoryId: salwarSuits.id,
+    name: "Hand Block Print Cotton Straight Suit — Jaipur",
+    slug: "hand-block-print-cotton-straight-suit",
+    description: "Sanganeri hand block printed cotton straight suit from Jaipur. Breathable and light, ideal for daily wear and office. Set includes kurta, churidar and cotton dupatta.",
+    fabric: "Cotton", region: "Jaipur, Rajasthan",
+    status: ProductStatus.APPROVED, qualityScore: 76, searchIndexedAt: new Date(),
+    tags: ["block-print", "cotton", "jaipur", "daily-wear", "office-wear"],
+    variants: {
+      create: [
+        { name: "Indigo Floral", sku: "BLK-IND-001", pricePaise: 189900, mrpPaise: 239900, inventory: { create: { quantity: 20, reservedQuantity: 3 } } },
+        { name: "Red Buti",      sku: "BLK-RED-001", pricePaise: 189900, mrpPaise: 239900, inventory: { create: { quantity: 15, reservedQuantity: 0 } } },
+        { name: "Black Stripe",  sku: "BLK-BLK-001", pricePaise: 199900, mrpPaise: 249900, inventory: { create: { quantity: 12, reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1585842378054-ee2e52f94ba2?w=800&q=80", altText: "Block print cotton suit", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  // Kurtas & Kurtis
+  await upsertProduct("ajrakh-a-line-kurti-kalamkari", {
+    vendorId: chanderi.id, categoryId: kurtaKurtis.id,
+    name: "Ajrakh Print A-Line Kurti — Kalamkari",
+    slug: "ajrakh-a-line-kurti-kalamkari",
+    description: "Soft cotton A-line kurti with traditional Ajrakh block print from Kutch. The natural indigo and madder dyes give it its signature deep tones. Pairs with palazzos or jeans.",
+    fabric: "Cotton", region: "Kutch, Gujarat",
+    status: ProductStatus.APPROVED, qualityScore: 78, searchIndexedAt: new Date(),
+    tags: ["ajrakh", "kurti", "a-line", "kutch", "natural-dye"],
+    variants: {
+      create: [
+        { name: "S",  sku: "AJR-KUR-S",  pricePaise: 129900, mrpPaise: 159900, inventory: { create: { quantity: 10, reservedQuantity: 0 } } },
+        { name: "M",  sku: "AJR-KUR-M",  pricePaise: 129900, mrpPaise: 159900, inventory: { create: { quantity: 15, reservedQuantity: 2 } } },
+        { name: "L",  sku: "AJR-KUR-L",  pricePaise: 129900, mrpPaise: 159900, inventory: { create: { quantity: 12, reservedQuantity: 1 } } },
+        { name: "XL", sku: "AJR-KUR-XL", pricePaise: 139900, mrpPaise: 169900, inventory: { create: { quantity: 8,  reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1622495966027-e7a6b89d4e49?w=800&q=80", altText: "Ajrakh kurti", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  await upsertProduct("bandhani-flared-kurti-gujarat", {
+    vendorId: rookash.id, categoryId: kurtaKurtis.id,
+    name: "Bandhani Flared Kurti — Gujarat",
+    slug: "bandhani-flared-kurti-gujarat",
+    description: "Traditional Bandhani tie-dye flared kurti in fine cotton. Each piece is hand-tied by artisans in Jamnagar before dyeing, making every kurta unique. Bell sleeves and side pockets.",
+    fabric: "Cotton", region: "Jamnagar, Gujarat",
+    status: ProductStatus.APPROVED, qualityScore: 80, searchIndexedAt: new Date(),
+    tags: ["bandhani", "kurti", "flared", "gujarat", "tie-dye"],
+    variants: {
+      create: [
+        { name: "S",  sku: "BAN-KUR-S",  pricePaise: 149900, mrpPaise: 189900, inventory: { create: { quantity: 8,  reservedQuantity: 0 } } },
+        { name: "M",  sku: "BAN-KUR-M",  pricePaise: 149900, mrpPaise: 189900, inventory: { create: { quantity: 12, reservedQuantity: 1 } } },
+        { name: "L",  sku: "BAN-KUR-L",  pricePaise: 149900, mrpPaise: 189900, inventory: { create: { quantity: 10, reservedQuantity: 0 } } },
+        { name: "XL", sku: "BAN-KUR-XL", pricePaise: 159900, mrpPaise: 199900, inventory: { create: { quantity: 6,  reservedQuantity: 0 } } },
+        { name: "XXL",sku: "BAN-KUR-XXL",pricePaise: 159900, mrpPaise: 199900, inventory: { create: { quantity: 4,  reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?w=800&q=80", altText: "Bandhani kurti", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  // Lehengas
+  await upsertProduct("zardozi-bridal-lehenga-choli", {
+    vendorId: rookash.id, categoryId: lehengas.id,
+    name: "Zardozi Bridal Lehenga Choli — Heritage",
+    slug: "zardozi-bridal-lehenga-choli",
+    description: "Heavy silk lehenga with dense Zardozi goldwork embroidery on the skirt, blouse and dupatta. Crafted over 45 days by master embroiderers in Varanasi. Comes with a full-length stitched blouse and dupatta.",
+    fabric: "Silk", region: "Varanasi, Uttar Pradesh",
+    status: ProductStatus.APPROVED, qualityScore: 96, searchIndexedAt: new Date(),
+    tags: ["zardozi", "bridal", "lehenga", "silk", "embroidery", "wedding"],
+    variants: {
+      create: [
+        { name: "Scarlet Red & Gold",  sku: "ZAR-RED-001", pricePaise: 8499900, mrpPaise: 9999900, inventory: { create: { quantity: 2, reservedQuantity: 0 } } },
+        { name: "Ivory & Gold",        sku: "ZAR-IVO-001", pricePaise: 8499900, mrpPaise: 9999900, inventory: { create: { quantity: 1, reservedQuantity: 0 } } },
+        { name: "Deep Magenta & Gold", sku: "ZAR-MAG-001", pricePaise: 8999900, mrpPaise: 10499900,inventory: { create: { quantity: 1, reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1631125915902-d8abe9225ff2?w=800&q=80", altText: "Zardozi bridal lehenga", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  await upsertProduct("bandhani-party-lehenga-choli", {
+    vendorId: chanderi.id, categoryId: lehengas.id,
+    name: "Bandhani Party Lehenga Choli — Navratri",
+    slug: "bandhani-party-lehenga-choli",
+    description: "Vibrant Bandhani lehenga choli set in pure cotton with mirror-work blouse. A Navratri and Garba staple from Ahmedabad's oldest Bandhani houses. Flared silhouette, 3-metre skirt.",
+    fabric: "Cotton", region: "Ahmedabad, Gujarat",
+    status: ProductStatus.APPROVED, qualityScore: 82, searchIndexedAt: new Date(),
+    tags: ["bandhani", "lehenga", "party-wear", "navratri", "garba"],
+    variants: {
+      create: [
+        { name: "Fuchsia & Orange", sku: "BND-FOC-001", pricePaise: 349900, mrpPaise: 429900, inventory: { create: { quantity: 8, reservedQuantity: 2 } } },
+        { name: "Green & Yellow",   sku: "BND-GRY-001", pricePaise: 349900, mrpPaise: 429900, inventory: { create: { quantity: 6, reservedQuantity: 0 } } },
+        { name: "Red & Turquoise",  sku: "BND-RET-001", pricePaise: 369900, mrpPaise: 449900, inventory: { create: { quantity: 5, reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=800&q=80", altText: "Bandhani party lehenga", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  // Fusion Wear
+  await upsertProduct("chanderi-shirt-saree-contemporary", {
+    vendorId: chanderi.id, categoryId: fusionWear.id,
+    name: "Chanderi Shirt Saree — Contemporary Drape",
+    slug: "chanderi-shirt-saree-contemporary",
+    description: "Pre-stitched Chanderi shirt saree with a structured shirt-style top and a pre-pleated saree skirt. Comes ready to wear in 2 minutes. Modern workwear meets Indian craft.",
+    fabric: "Chanderi", region: "Chanderi, Madhya Pradesh",
+    status: ProductStatus.APPROVED, qualityScore: 83, searchIndexedAt: new Date(),
+    tags: ["chanderi", "shirt-saree", "fusion", "workwear", "pre-stitched"],
+    variants: {
+      create: [
+        { name: "Off White",   sku: "SHR-OWH-001", pricePaise: 429900, mrpPaise: 529900, inventory: { create: { quantity: 7, reservedQuantity: 1 } } },
+        { name: "Sage Green",  sku: "SHR-SAG-001", pricePaise: 429900, mrpPaise: 529900, inventory: { create: { quantity: 5, reservedQuantity: 0 } } },
+        { name: "Dusty Mauve", sku: "SHR-MAU-001", pricePaise: 449900, mrpPaise: 549900, inventory: { create: { quantity: 4, reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1585842378054-ee2e52f94ba2?w=800&q=80", altText: "Chanderi shirt saree", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  await upsertProduct("silk-dhoti-saree-contrast-belt", {
+    vendorId: rookash.id, categoryId: fusionWear.id,
+    name: "Silk Dhoti Saree with Contrast Belt",
+    slug: "silk-dhoti-saree-contrast-belt",
+    description: "Pre-stitched silk dhoti saree with a structured top and a contrast leather belt at the waist. The dhoti silhouette gives it a contemporary runway feel while keeping the Indian saree spirit.",
+    fabric: "Silk",
+    status: ProductStatus.APPROVED, qualityScore: 79, searchIndexedAt: new Date(),
+    tags: ["dhoti-saree", "fusion", "silk", "belt", "contemporary"],
+    variants: {
+      create: [
+        { name: "Ivory & Gold Belt",  sku: "DHT-IVG-001", pricePaise: 699900, mrpPaise: 849900, inventory: { create: { quantity: 4, reservedQuantity: 0 } } },
+        { name: "Navy & Brown Belt",  sku: "DHT-NBR-001", pricePaise: 699900, mrpPaise: 849900, inventory: { create: { quantity: 3, reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1602810316693-3667c854239a?w=800&q=80", altText: "Silk dhoti saree", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  // Jewellery
+  await upsertProduct("oxidised-silver-jhumka-earrings", {
+    vendorId: rookash.id, categoryId: jewellery.id,
+    name: "Oxidised Silver Jhumka Earrings — Rajasthani",
+    slug: "oxidised-silver-jhumka-earrings",
+    description: "Handcrafted oxidised silver Jhumkas from Jaipur's Johri Bazaar. Features intricate filigree work and hanging ghungroos. Pairs beautifully with cotton and silk sarees.",
+    region: "Jaipur, Rajasthan",
+    status: ProductStatus.APPROVED, qualityScore: 86, searchIndexedAt: new Date(),
+    tags: ["jhumka", "earrings", "silver", "oxidised", "jaipur", "traditional"],
+    variants: {
+      create: [
+        { name: "Small (2.5 cm)", sku: "JHM-SM-001", pricePaise: 89900,  mrpPaise: 119900, inventory: { create: { quantity: 25, reservedQuantity: 3 } } },
+        { name: "Large (4 cm)",   sku: "JHM-LG-001", pricePaise: 129900, mrpPaise: 169900, inventory: { create: { quantity: 18, reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1602751584552-8ba73aad10e1?w=800&q=80", altText: "Oxidised silver jhumkas", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  await upsertProduct("meenakari-choker-necklace-set", {
+    vendorId: chanderi.id, categoryId: jewellery.id,
+    name: "Meenakari Choker Necklace Set",
+    slug: "meenakari-choker-necklace-set",
+    description: "Five-piece Meenakari jewellery set including choker necklace, earrings, maang tikka and two bangles. Handpainted enamel on gold-plated brass by Jaipur's Meenakari artisans.",
+    region: "Jaipur, Rajasthan",
+    status: ProductStatus.APPROVED, qualityScore: 84, searchIndexedAt: new Date(),
+    tags: ["meenakari", "choker", "necklace", "set", "gold-plated", "jaipur"],
+    variants: {
+      create: [
+        { name: "Red & Green Peacock", sku: "MEE-RGP-001", pricePaise: 249900, mrpPaise: 329900, inventory: { create: { quantity: 10, reservedQuantity: 1 } } },
+        { name: "Blue & White Floral", sku: "MEE-BWF-001", pricePaise: 249900, mrpPaise: 329900, inventory: { create: { quantity: 8,  reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800&q=80", altText: "Meenakari choker set", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  // Handbags & Clutches
+  await upsertProduct("embroidered-potli-bag-rajasthani", {
+    vendorId: rookash.id, categoryId: handbagsCat.id,
+    name: "Embroidered Potli Bag — Rajasthani Zardozi",
+    slug: "embroidered-potli-bag-rajasthani",
+    description: "Handcrafted Zardozi embroidered Potli bag in velvet with a golden drawstring. A classic accessory for weddings, sangeet and festive occasions.",
+    region: "Jaipur, Rajasthan",
+    status: ProductStatus.APPROVED, qualityScore: 81, searchIndexedAt: new Date(),
+    tags: ["potli", "bag", "zardozi", "wedding", "festive", "velvet"],
+    variants: {
+      create: [
+        { name: "Maroon Velvet",  sku: "POT-MAR-001", pricePaise: 99900,  mrpPaise: 129900, inventory: { create: { quantity: 20, reservedQuantity: 4 } } },
+        { name: "Bottle Green",   sku: "POT-GRN-001", pricePaise: 99900,  mrpPaise: 129900, inventory: { create: { quantity: 15, reservedQuantity: 0 } } },
+        { name: "Royal Purple",   sku: "POT-PUR-001", pricePaise: 109900, mrpPaise: 139900, inventory: { create: { quantity: 12, reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=800&q=80", altText: "Embroidered potli bag", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  // Footwear
+  await upsertProduct("handcrafted-kolhapuri-leather-sandals", {
+    vendorId: chanderi.id, categoryId: footwear.id,
+    name: "Handcrafted Kolhapuri Leather Sandals",
+    slug: "handcrafted-kolhapuri-leather-sandals",
+    description: "Genuine vegetable-tanned leather Kolhapuri chappals made by third-generation artisans in Kolhapur. GI-tagged craft. Naturally moisture-wicking, they get more comfortable with wear.",
+    region: "Kolhapur, Maharashtra",
+    giTag: "Kolhapuri Chappal",
+    status: ProductStatus.APPROVED, qualityScore: 88, searchIndexedAt: new Date(),
+    tags: ["kolhapuri", "footwear", "leather", "handcrafted", "sandals"],
+    variants: {
+      create: [
+        { name: "UK 4", sku: "KOL-UK4-001", pricePaise: 189900, mrpPaise: 239900, inventory: { create: { quantity: 8,  reservedQuantity: 0 } } },
+        { name: "UK 5", sku: "KOL-UK5-001", pricePaise: 189900, mrpPaise: 239900, inventory: { create: { quantity: 12, reservedQuantity: 1 } } },
+        { name: "UK 6", sku: "KOL-UK6-001", pricePaise: 189900, mrpPaise: 239900, inventory: { create: { quantity: 10, reservedQuantity: 0 } } },
+        { name: "UK 7", sku: "KOL-UK7-001", pricePaise: 199900, mrpPaise: 249900, inventory: { create: { quantity: 6,  reservedQuantity: 0 } } },
+        { name: "UK 8", sku: "KOL-UK8-001", pricePaise: 199900, mrpPaise: 249900, inventory: { create: { quantity: 4,  reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1603487742131-4160ec999306?w=800&q=80", altText: "Kolhapuri sandals", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  // Western Wear
+  await upsertProduct("block-print-flowy-maxi-dress", {
+    vendorId: chanderi.id, categoryId: westernWear.id,
+    name: "Hand Block Print Flowy Maxi Dress — Bagru",
+    slug: "block-print-flowy-maxi-dress",
+    description: "Breeze-light cotton maxi dress with Bagru hand block print from Rajasthan. Tiered silhouette, adjustable straps and side pockets. The natural dyes are certified azo-free.",
+    fabric: "Cotton", region: "Bagru, Rajasthan",
+    status: ProductStatus.APPROVED, qualityScore: 75, searchIndexedAt: new Date(),
+    tags: ["block-print", "maxi-dress", "cotton", "bagru", "western"],
+    variants: {
+      create: [
+        { name: "XS", sku: "MAX-XS-001", pricePaise: 199900, mrpPaise: 249900, inventory: { create: { quantity: 8,  reservedQuantity: 0 } } },
+        { name: "S",  sku: "MAX-S-001",  pricePaise: 199900, mrpPaise: 249900, inventory: { create: { quantity: 12, reservedQuantity: 2 } } },
+        { name: "M",  sku: "MAX-M-001",  pricePaise: 199900, mrpPaise: 249900, inventory: { create: { quantity: 15, reservedQuantity: 1 } } },
+        { name: "L",  sku: "MAX-L-001",  pricePaise: 199900, mrpPaise: 249900, inventory: { create: { quantity: 10, reservedQuantity: 0 } } },
+        { name: "XL", sku: "MAX-XL-001", pricePaise: 209900, mrpPaise: 259900, inventory: { create: { quantity: 6,  reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=800&q=80", altText: "Block print maxi dress", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  // Beauty & Personal Care
+  await upsertProduct("rose-saffron-face-serum", {
+    vendorId: chanderi.id, categoryId: skincareCat.id,
+    name: "Rose & Saffron Brightening Face Serum",
+    slug: "rose-saffron-face-serum",
+    description: "Ayurvedic face serum with pure Kashmiri saffron extract and Bulgarian rose water. Brightens skin tone, reduces dark spots and adds a natural glow. Paraben-free, cruelty-free, dermatologist tested.",
+    status: ProductStatus.APPROVED, qualityScore: 77, searchIndexedAt: new Date(),
+    tags: ["skincare", "serum", "saffron", "rose", "ayurvedic", "brightening"],
+    variants: {
+      create: [
+        { name: "15ml",  sku: "SER-15-001",  pricePaise: 89900,  mrpPaise: 119900, inventory: { create: { quantity: 30, reservedQuantity: 5 } } },
+        { name: "30ml",  sku: "SER-30-001",  pricePaise: 159900, mrpPaise: 199900, inventory: { create: { quantity: 25, reservedQuantity: 2 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=800&q=80", altText: "Rose saffron serum", isPrimary: true, sortOrder: 0 }] },
+  });
+
+  await upsertProduct("amla-brahmi-hair-oil", {
+    vendorId: rookash.id, categoryId: haircareCat.id,
+    name: "Amla & Brahmi Growth Hair Oil",
+    slug: "amla-brahmi-hair-oil",
+    description: "Cold-pressed Amla oil infused with Brahmi, Bhringraj and Neem extracts. Traditional Ayurvedic formulation for hair strengthening and scalp nourishment. Suitable for all hair types.",
+    status: ProductStatus.APPROVED, qualityScore: 80, searchIndexedAt: new Date(),
+    tags: ["haircare", "oil", "amla", "brahmi", "ayurvedic", "hair-growth"],
+    variants: {
+      create: [
+        { name: "100ml", sku: "HAR-100-001", pricePaise: 59900,  mrpPaise: 79900,  inventory: { create: { quantity: 40, reservedQuantity: 3 } } },
+        { name: "200ml", sku: "HAR-200-001", pricePaise: 109900, mrpPaise: 139900, inventory: { create: { quantity: 30, reservedQuantity: 0 } } },
+      ],
+    },
+    images: { create: [{ url: "https://images.unsplash.com/photo-1522338242992-e1a54906a8da?w=800&q=80", altText: "Amla brahmi hair oil", isPrimary: true, sortOrder: 0 }] },
+  });
+
   // ── Addresses ────────────────────────────────────────────────────────────────
   const addrData = [
     { userId: priya.id, fullName: "Priya Sharma", phone: "+919876543210", line1: "42 Punjabi Bagh West", city: "New Delhi", state: "Delhi", pincode: "110026" },
@@ -648,6 +1139,49 @@ async function main() {
     });
   }
 
+  // ── Index approved products in Meilisearch ─────────────────────────────────
+  const meiliHost = process.env["MEILI_HOST"] ?? "http://localhost:7700";
+  const meiliKey  = process.env["MEILI_API_KEY"] ?? "sario_meili_dev_key";
+
+  const approvedProducts = await prisma.product.findMany({
+    where: { status: ProductStatus.APPROVED, deletedAt: null },
+    include: {
+      variants: { where: { isActive: true }, select: { pricePaise: true } },
+      images:   { select: { url: true, isPrimary: true } },
+    },
+  });
+
+  const meiliDocs = approvedProducts.map((p) => {
+    const prices = p.variants.map((v) => v.pricePaise);
+    const minPricePaise = prices.length ? Math.min(...prices) : 0;
+    const primaryImage = p.images.find((i) => i.isPrimary) ?? p.images[0];
+    return {
+      id:              p.id,
+      name:            p.name,
+      slug:            p.slug,
+      description:     p.description ?? "",
+      fabric:          p.fabric ?? null,
+      region:          p.region ?? null,
+      tags:            p.tags as string[],
+      categoryId:      p.categoryId,
+      vendorId:        p.vendorId,
+      minPricePaise,
+      primaryImageUrl: primaryImage?.url,
+    };
+  });
+
+  try {
+    const res = await fetch(`${meiliHost}/indexes/products/documents?primaryKey=id`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${meiliKey}` },
+      body: JSON.stringify(meiliDocs),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    console.log(`✅ Meilisearch: indexed ${meiliDocs.length} products`);
+  } catch (err) {
+    console.warn("⚠️  Meilisearch indexing failed (is it running?):", err);
+  }
+
   console.log(`
 ╔══════════════════════════════════════════════════════╗
 ║           SARIO DEV CREDENTIALS CHEAT SHEET          ║
@@ -672,8 +1206,9 @@ async function main() {
 `);
   console.log("✅ Seed complete:", {
     admin: admin.email,
+    categories: { topLevel: 7, total: "57 categories across 3 levels" },
     vendors: { approved: 2, pending: 3, suspended: 1 },
-    products: { approved: 8, pendingReview: 5, rejected: 2 },
+    products: { approved: 25, pendingReview: 5, rejected: 2 },
     buyers: 5,
     orders: 8,
   });
