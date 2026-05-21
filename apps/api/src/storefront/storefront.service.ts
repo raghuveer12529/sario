@@ -2,13 +2,45 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { ProductStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MeilisearchService } from "../catalog/meilisearch.service.js";
+import { RedisService } from "../redis/redis.service.js";
 
 @Injectable()
 export class StorefrontService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly search: MeilisearchService,
+    private readonly redis: RedisService,
   ) {}
+
+  private async getAllCategories() {
+    const cacheKey = "category:all";
+    let cached: string | null = null;
+    try { cached = await this.redis.get(cacheKey); } catch { /* Redis down, fallthrough */ }
+    if (cached) {
+      try { return JSON.parse(cached) as { id: string; parentId: string | null; isActive: boolean }[]; } catch { /* corrupt, fallthrough */ }
+    }
+
+    const categories = await this.prisma.category.findMany({
+      select: { id: true, parentId: true, isActive: true },
+    });
+    try { await this.redis.setex(cacheKey, 300, JSON.stringify(categories)); } catch { /* non-fatal */ }
+    return categories;
+  }
+
+  private async getDescendantCategoryIds(categoryId: string): Promise<string[]> {
+    const all = await this.getAllCategories();
+    const result: string[] = [];
+    const queue = [categoryId];
+    while (queue.length) {
+      const current = queue.shift()!;
+      const children = all.filter((c) => c.parentId === current && c.isActive);
+      for (const child of children) {
+        result.push(child.id);
+        queue.push(child.id);
+      }
+    }
+    return result;
+  }
 
   async searchProducts(opts: {
     q?: string;
@@ -22,7 +54,15 @@ export class StorefrontService {
     limit: number;
   }) {
     const filters: string[] = [];
-    if (opts.categoryId) filters.push(`categoryId = "${opts.categoryId}"`);
+    if (opts.categoryId) {
+      const descendantIds = await this.getDescendantCategoryIds(opts.categoryId);
+      const allIds = [opts.categoryId, ...descendantIds];
+      filters.push(
+        allIds.length === 1
+          ? `categoryId = "${allIds[0]}"`
+          : `categoryId IN [${allIds.map((id) => `"${id}"`).join(", ")}]`,
+      );
+    }
     if (opts.region) filters.push(`region = "${opts.region}"`);
     if (opts.fabric) filters.push(`fabric = "${opts.fabric}"`);
     if (opts.minPrice) filters.push(`minPricePaise >= ${opts.minPrice}`);
@@ -66,7 +106,18 @@ export class StorefrontService {
   async getCategories() {
     return this.prisma.category.findMany({
       where: { isActive: true, parentId: null },
-      include: { children: { where: { isActive: true } } },
+      include: {
+        children: {
+          where: { isActive: true },
+          orderBy: { sortOrder: "asc" },
+          include: {
+            children: {
+              where: { isActive: true },
+              orderBy: { sortOrder: "asc" },
+            },
+          },
+        },
+      },
       orderBy: { sortOrder: "asc" },
     });
   }
