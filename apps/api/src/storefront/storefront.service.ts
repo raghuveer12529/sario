@@ -83,6 +83,13 @@ export class StorefrontService {
   }
 
   async getProductBySlug(slug: string) {
+    const cacheKey = `product:slug:${slug}`;
+    let cached: string | null = null;
+    try { cached = await this.redis.get(cacheKey); } catch { /* Redis down, fallthrough */ }
+    if (cached) {
+      try { return JSON.parse(cached) as Record<string, unknown>; } catch { /* corrupt, fallthrough */ }
+    }
+
     const product = await this.prisma.product.findUnique({
       where: { slug, status: ProductStatus.APPROVED, deletedAt: null },
       include: {
@@ -103,6 +110,7 @@ export class StorefrontService {
     });
 
     if (!product) throw new NotFoundException("Product not found.");
+    try { await this.redis.setex(cacheKey, 60, JSON.stringify(product)); } catch { /* non-fatal */ }
     return product;
   }
 

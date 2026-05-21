@@ -6,6 +6,7 @@ import {
 import { ProductStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MeilisearchService } from "./meilisearch.service.js";
+import { RedisService } from "../redis/redis.service.js";
 import type { CreateProductDto } from "./dto/create-product.dto.js";
 
 @Injectable()
@@ -13,6 +14,7 @@ export class ProductService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly search: MeilisearchService,
+    private readonly redis: RedisService,
   ) {}
 
   async create(vendorId: string, dto: CreateProductDto) {
@@ -72,10 +74,12 @@ export class ProductService {
       ...(data.tags ? { tags: data.tags } : {}),
     };
 
-    return this.prisma.product.update({
+    const updatedProduct = await this.prisma.product.update({
       where: { id: productId },
       data: updateData,
     });
+    await this.redis.del(`product:slug:${updatedProduct.slug}`).catch(() => {});
+    return updatedProduct;
   }
 
   async softDelete(vendorId: string, productId: string) {
@@ -118,6 +122,8 @@ export class ProductService {
       data: { status: ProductStatus.APPROVED, searchIndexedAt: new Date() },
       include: { variants: { select: { pricePaise: true } }, images: { where: { isPrimary: true }, take: 1 } },
     });
+
+    await this.redis.del(`product:slug:${product.slug}`).catch(() => {});
 
     const minPricePaise = Math.min(...product.variants.map((v) => v.pricePaise));
     await this.search.upsert({
