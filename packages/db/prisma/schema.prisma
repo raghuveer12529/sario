@@ -73,17 +73,18 @@ enum OtpPurpose {
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 model User {
-  id          String    @id @default(cuid())
-  phone       String    @unique
-  email       String?   @unique
-  name        String?
-  avatarUrl   String?
-  isVerified  Boolean   @default(false)
+  id           String    @id @default(cuid())
+  phone        String?   @unique
+  email        String?   @unique
+  name         String?
+  avatarUrl    String?
+  passwordHash String?
+  isVerified   Boolean   @default(false)
   // rolling trust score 0–100; used for COD eligibility
-  trustScore  Int       @default(50)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  trustScore   Int       @default(50)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   addresses     Address[]
   cart          Cart?
@@ -208,6 +209,7 @@ model Product {
   giTag            String?
   status           ProductStatus @default(DRAFT)
   tags             String[]
+  occasion         String[]
   hsnCode          String?
   qualityScore     Int?          // 0–100, set by admin/ML
   searchIndexedAt  DateTime?
