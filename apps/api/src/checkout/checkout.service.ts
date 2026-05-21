@@ -155,11 +155,11 @@ export class CheckoutService {
 
     const { entity } = event.payload.payment;
 
-    // Idempotency: use event_id if present, fall back to payment entity id
-    const idempotencyKey = `webhook:${event.event_id ?? entity.id}`;
+    // Idempotency: use event_id if present, fall back to payment entity id; include event type to avoid collision
+    const idempotencyKey = `webhook:${event.event}:${event.event_id ?? entity.id}`;
     let acquired = false;
     try {
-      acquired = (await this.redis.set(idempotencyKey, "1", "EX", 86400, "NX")) === "OK";
+      acquired = (await this.redis.set(idempotencyKey, "1", "EX", 259200, "NX")) === "OK";
     } catch {
       // Redis unavailable — proceed without dedup (better than dropping all webhooks)
       acquired = true;
