@@ -8,8 +8,11 @@ import { PrismaService } from "../prisma/prisma.service.js";
 import { RedisService } from "../redis/redis.service.js";
 import { Msg91Service } from "../msg91/msg91.service.js";
 import * as cryptoUtil from "../common/crypto.util.js";
+import * as bcrypt from "bcrypt";
 
 jest.mock("../common/crypto.util.js");
+jest.mock("bcrypt");
+const mockBcrypt = bcrypt as jest.Mocked<typeof bcrypt>;
 
 const mockCrypto = cryptoUtil as jest.Mocked<typeof cryptoUtil>;
 
@@ -22,6 +25,8 @@ const mockPrisma = {
   },
   user: {
     upsert: jest.fn(),
+    findUnique: jest.fn(),
+    create: jest.fn(),
   },
   refreshToken: {
     create: jest.fn(),
@@ -289,6 +294,63 @@ describe("AuthService", () => {
         where: { userId: "usr_1", hashedToken: "hashed", revokedAt: null },
         data: { revokedAt: expect.any(Date) as Date },
       });
+    });
+  });
+
+  // ─── login ────────────────────────────────────────────────────────────────
+
+  describe("login", () => {
+    const email = "buyer@example.com";
+    const password = "secret123";
+    const fakeUser = {
+      id: "usr_1",
+      email,
+      phone: null,
+      name: null,
+      isVerified: true,
+      passwordHash: "hashed-pw",
+    };
+
+    beforeEach(() => {
+      mockCrypto.generateRefreshToken.mockReturnValue("raw-refresh");
+      mockCrypto.hashRefreshToken.mockReturnValue("hashed-refresh");
+      mockPrisma.refreshToken.create.mockResolvedValue({});
+    });
+
+    it("auto-registers and returns tokens when email is new", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockBcrypt.hash.mockResolvedValue("hashed-pw" as never);
+      mockPrisma.user.create.mockResolvedValue(fakeUser);
+
+      const result = await service.login(email, password);
+
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ email, isVerified: true }) as object }),
+      );
+      expect(result.accessToken).toBe("signed-access-token");
+      expect(result.user.email).toBe(email);
+      expect((result.user as { passwordHash?: unknown }).passwordHash).toBeUndefined();
+    });
+
+    it("returns tokens when credentials are correct", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(fakeUser);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+
+      const result = await service.login(email, password);
+
+      expect(result.accessToken).toBe("signed-access-token");
+    });
+
+    it("throws UnauthorizedException when password is wrong", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(fakeUser);
+      mockBcrypt.compare.mockResolvedValue(false as never);
+
+      await expect(service.login(email, password)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it("throws UnauthorizedException when user has no passwordHash", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ ...fakeUser, passwordHash: null });
+      await expect(service.login(email, password)).rejects.toThrow(UnauthorizedException);
     });
   });
 });

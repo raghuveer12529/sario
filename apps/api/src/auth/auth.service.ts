@@ -103,7 +103,7 @@ export class AuthService {
       select: { id: true, phone: true, name: true, isVerified: true },
     });
 
-    const tokens = await this.issueTokens(user.id, user.phone);
+    const tokens = await this.issueTokens(user.id, user.email ?? user.phone ?? "", "CUSTOMER");
     return { ...tokens, user };
   }
 
@@ -112,7 +112,7 @@ export class AuthService {
 
     const stored = await this.prisma.refreshToken.findUnique({
       where: { hashedToken: hashed },
-      include: { user: { select: { id: true, phone: true, deletedAt: true } } },
+      include: { user: { select: { id: true, email: true, phone: true, deletedAt: true } } },
     });
 
     if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
@@ -129,7 +129,7 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
 
-    return this.issueTokens(stored.user.id, stored.user.phone);
+    return this.issueTokens(stored.user.id, stored.user.email ?? stored.user.phone ?? "", "CUSTOMER");
   }
 
   async logout(userId: string, rawRefreshToken: string): Promise<void> {
@@ -171,6 +171,29 @@ export class AuthService {
     await this.redis.del(`jwt:user:${userId}`).catch(() => {});
   }
 
+  async login(email: string, password: string): Promise<AuthResponse> {
+    let user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, phone: true, name: true, isVerified: true, passwordHash: true },
+    });
+
+    if (!user) {
+      const hash = await bcrypt.hash(password, 12);
+      user = await this.prisma.user.create({
+        data: { email, passwordHash: hash, isVerified: true },
+        select: { id: true, email: true, phone: true, name: true, isVerified: true, passwordHash: true },
+      });
+    } else {
+      if (!user.passwordHash) throw new UnauthorizedException("Invalid credentials.");
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) throw new UnauthorizedException("Invalid credentials.");
+    }
+
+    const tokens = await this.issueTokens(user.id, user.email!, "CUSTOMER");
+    const { passwordHash: _pw, ...safeUser } = user;
+    return { ...tokens, user: safeUser };
+  }
+
   async adminLogin(email: string, password: string): Promise<{ accessToken: string; admin: { id: string; name: string; email: string; role: string } }> {
     const admin = await this.prisma.adminUser.findUnique({
       where: { email, deletedAt: null },
@@ -182,7 +205,7 @@ export class AuthService {
 
     await this.prisma.adminUser.update({ where: { id: admin.id }, data: { lastLoginAt: new Date() } });
 
-    const payload: JwtPayload = { sub: admin.id, email: admin.email, role: "admin" };
+    const payload: JwtPayload = { sub: admin.id, email: admin.email, role: "SUPER_ADMIN" };
     const accessToken = this.jwt.sign(payload);
     return { accessToken, admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role } };
   }
@@ -205,12 +228,12 @@ export class AuthService {
       create: { phone, isVerified: true },
       select: { id: true, phone: true, name: true, isVerified: true },
     });
-    const tokens = await this.issueTokens(user.id, user.phone);
+    const tokens = await this.issueTokens(user.id, user.email ?? user.phone ?? "", "CUSTOMER");
     return { ...tokens, user };
   }
 
-  private async issueTokens(userId: string, phone: string): Promise<AuthTokens> {
-    const payload: JwtPayload = { sub: userId, phone };
+  private async issueTokens(userId: string, email: string, role: "CUSTOMER" | "VENDOR"): Promise<AuthTokens> {
+    const payload: JwtPayload = { sub: userId, email, role };
     const accessToken = this.jwt.sign(payload);
 
     const raw = generateRefreshToken();
