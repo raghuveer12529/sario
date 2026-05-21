@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { VendorStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { RedisService } from "../redis/redis.service.js";
 import { PennyDropService } from "./penny-drop.service.js";
 import type { ApplyVendorDto } from "./dto/apply-vendor.dto.js";
 import type { UpdateVendorDto } from "./dto/update-vendor.dto.js";
@@ -21,6 +22,7 @@ function slugify(name: string): string {
 export class VendorService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
     private readonly pennyDrop: PennyDropService,
   ) {}
 
@@ -112,10 +114,13 @@ export class VendorService {
 
   async suspend(vendorId: string) {
     await this.assertVendorExists(vendorId);
-    return this.prisma.vendor.update({
+    const updated = await this.prisma.vendor.update({
       where: { id: vendorId },
       data: { status: VendorStatus.SUSPENDED },
     });
+    const vendor = await this.prisma.vendor.findUnique({ where: { id: vendorId }, select: { userId: true } });
+    if (vendor?.userId) await this.redis.del(`jwt:user:${vendor.userId}`).catch(() => {});
+    return updated;
   }
 
   async findOne(vendorId: string) {

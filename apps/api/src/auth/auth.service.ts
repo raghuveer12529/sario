@@ -159,7 +159,16 @@ export class AuthService {
       },
       select: { id: true, phone: true, name: true, email: true, avatarUrl: true, isVerified: true },
     });
+    await this.redis.del(`jwt:user:${userId}`).catch(() => {});
     return user;
+  }
+
+  async deleteMe(userId: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { deletedAt: new Date() },
+    });
+    await this.redis.del(`jwt:user:${userId}`).catch(() => {});
   }
 
   async adminLogin(email: string, password: string): Promise<{ accessToken: string; admin: { id: string; name: string; email: string; role: string } }> {
@@ -176,6 +185,14 @@ export class AuthService {
     const payload: JwtPayload = { sub: admin.id, email: admin.email, role: "admin" };
     const accessToken = this.jwt.sign(payload);
     return { accessToken, admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role } };
+  }
+
+  async deleteAdmin(adminId: string): Promise<void> {
+    await this.prisma.adminUser.update({
+      where: { id: adminId },
+      data: { deletedAt: new Date() },
+    });
+    await this.redis.del(`jwt:admin:${adminId}`).catch(() => {});
   }
 
   async devLogin(phone: string): Promise<AuthResponse> {

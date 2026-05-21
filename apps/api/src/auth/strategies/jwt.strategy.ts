@@ -8,6 +8,8 @@ import type { JwtPayload } from "../auth.types.js";
 
 const USER_CACHE_TTL_S = 300;
 
+type CachedPayload = Record<string, unknown>;
+
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
   constructor(
@@ -25,8 +27,15 @@ export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
   async validate(payload: JwtPayload) {
     if (payload.role === "admin") {
       const cacheKey = `jwt:admin:${payload.sub}`;
-      const cached = await this.redis.get(cacheKey);
-      if (cached) return JSON.parse(cached) as object;
+
+      let cached: string | null = null;
+      try { cached = await this.redis.get(cacheKey); } catch { /* Redis down, fallthrough */ }
+      if (cached) {
+        try {
+          const parsed: unknown = JSON.parse(cached);
+          return parsed as CachedPayload;
+        } catch { /* corrupt cache value, fallthrough */ }
+      }
 
       const admin = await this.prisma.adminUser.findUnique({
         where: { id: payload.sub, deletedAt: null },
@@ -34,13 +43,20 @@ export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
       });
       if (!admin) throw new UnauthorizedException();
       const result = { ...admin, role: "admin" as const };
-      await this.redis.setex(cacheKey, USER_CACHE_TTL_S, JSON.stringify(result));
+      try { await this.redis.setex(cacheKey, USER_CACHE_TTL_S, JSON.stringify(result)); } catch { /* non-fatal */ }
       return result;
     }
 
     const cacheKey = `jwt:user:${payload.sub}`;
-    const cached = await this.redis.get(cacheKey);
-    if (cached) return JSON.parse(cached) as object;
+
+    let cached: string | null = null;
+    try { cached = await this.redis.get(cacheKey); } catch { /* Redis down, fallthrough */ }
+    if (cached) {
+      try {
+        const parsed: unknown = JSON.parse(cached);
+        return parsed as CachedPayload;
+      } catch { /* corrupt cache value, fallthrough */ }
+    }
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub, deletedAt: null },
@@ -54,7 +70,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, "jwt") {
     });
 
     const result = { ...user, vendor: vendor ?? undefined };
-    await this.redis.setex(cacheKey, USER_CACHE_TTL_S, JSON.stringify(result));
+    try { await this.redis.setex(cacheKey, USER_CACHE_TTL_S, JSON.stringify(result)); } catch { /* non-fatal */ }
     return result;
   }
 }
