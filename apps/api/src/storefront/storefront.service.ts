@@ -12,6 +12,12 @@ export class StorefrontService {
     private readonly redis: RedisService,
   ) {}
 
+  private serializeForCache(value: unknown): string {
+    return JSON.stringify(value, (_key, val) =>
+      typeof val === "bigint" ? val.toString() : val
+    );
+  }
+
   private async getAllCategories() {
     const cacheKey = "category:all";
     let cached: string | null = null;
@@ -110,7 +116,7 @@ export class StorefrontService {
     });
 
     if (!product) throw new NotFoundException("Product not found.");
-    try { await this.redis.setex(cacheKey, 60, JSON.stringify(product)); } catch { /* non-fatal */ }
+    try { await this.redis.setex(cacheKey, 60, this.serializeForCache(product)); } catch { /* non-fatal */ }
     return product;
   }
 

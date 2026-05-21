@@ -55,17 +55,12 @@ export class ProductService {
   async update(vendorId: string, productId: string, data: Partial<CreateProductDto>) {
     const product = await this.assertOwnership(vendorId, productId);
 
-    if (
+    const needsReview =
       product.status === ProductStatus.APPROVED ||
-      product.status === ProductStatus.REJECTED
-    ) {
-      await this.prisma.product.update({
-        where: { id: productId },
-        data: { status: ProductStatus.PENDING_REVIEW },
-      });
-    }
+      product.status === ProductStatus.REJECTED;
 
     const updateData = {
+      ...(needsReview ? { status: ProductStatus.PENDING_REVIEW } : {}),
       ...(data.name ? { name: data.name } : {}),
       ...(data.description ? { description: data.description } : {}),
       ...(data.fabric !== undefined ? { fabric: data.fabric } : {}),
