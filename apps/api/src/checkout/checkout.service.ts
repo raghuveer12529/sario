@@ -10,6 +10,7 @@ import { PaymentStatus, OrderStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { CartService } from "../cart/cart.service.js";
 import { RazorpayService } from "../payment/razorpay.service.js";
+import { RedisService } from "../redis/redis.service.js";
 import { randomUUID } from "crypto";
 
 export interface CheckoutInitDto {
@@ -25,6 +26,7 @@ export class CheckoutService {
     private readonly prisma: PrismaService,
     private readonly cartService: CartService,
     private readonly razorpay: RazorpayService,
+    private readonly redis: RedisService,
   ) {}
 
   async initiate(userId: string, dto: CheckoutInitDto) {
@@ -147,10 +149,26 @@ export class CheckoutService {
 
     const event = JSON.parse(rawBody) as {
       event: string;
+      event_id?: string;
       payload: { payment: { entity: { id: string; order_id: string; status: string } } };
     };
 
     const { entity } = event.payload.payment;
+
+    // Idempotency: use event_id if present, fall back to payment entity id
+    const idempotencyKey = `webhook:${event.event_id ?? entity.id}`;
+    let acquired = false;
+    try {
+      acquired = (await this.redis.set(idempotencyKey, "1", "EX", 86400, "NX")) === "OK";
+    } catch {
+      // Redis unavailable — proceed without dedup (better than dropping all webhooks)
+      acquired = true;
+    }
+
+    if (!acquired) {
+      this.logger.warn(`Duplicate webhook ignored: ${idempotencyKey}`);
+      return;
+    }
 
     if (event.event === "payment.captured") {
       await this.confirmPayment(entity.order_id, entity.id);
