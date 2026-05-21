@@ -30,11 +30,14 @@ export class StorefrontService {
   private async getDescendantCategoryIds(categoryId: string): Promise<string[]> {
     const all = await this.getAllCategories();
     const result: string[] = [];
+    const visited = new Set<string>([categoryId]);
     const queue = [categoryId];
     while (queue.length) {
       const current = queue.shift()!;
       const children = all.filter((c) => c.parentId === current && c.isActive);
       for (const child of children) {
+        if (visited.has(child.id)) continue;
+        visited.add(child.id);
         result.push(child.id);
         queue.push(child.id);
       }
