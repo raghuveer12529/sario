@@ -7,11 +7,13 @@ import { AuthController } from "./auth.controller.js";
 import { AuthService } from "./auth.service.js";
 import { JwtStrategy } from "./strategies/jwt.strategy.js";
 import { Msg91Module } from "../msg91/msg91.module.js";
+import { RedisModule } from "../redis/redis.module.js";
 
 @Module({
   imports: [
     PassportModule,
     Msg91Module,
+    RedisModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
