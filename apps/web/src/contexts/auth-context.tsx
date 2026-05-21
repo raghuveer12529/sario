@@ -26,7 +26,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
   login: (data: { refreshToken: string; user: User }) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateProfile: (data: { name?: string; email?: string; avatarUrl?: string }) => Promise<User>;
 }
 
@@ -37,8 +37,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  const logout = useCallback(() => {
-    // access_token is httpOnly — cannot be removed from JS; it will expire naturally (15 min)
+  const logout = useCallback(async () => {
+    // Tell the Next.js proxy to delete the httpOnly access_token cookie
+    try {
+      const refreshToken = Cookies.get("refresh_token");
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+        credentials: "include",
+      });
+    } catch { /* non-fatal — still clear local state */ }
+
     Cookies.remove("refresh_token");
     localStorage.removeItem("user");
     setUser(null);

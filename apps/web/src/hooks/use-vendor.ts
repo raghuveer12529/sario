@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Cookies from "js-cookie";
 import { API_BASE } from "@/lib/api";
 
 export type VendorStatus = "DRAFT" | "PENDING" | "APPROVED" | "SUSPENDED";
@@ -39,16 +38,11 @@ export function useVendor(): UseVendorReturn {
   const [error, setError] = useState<string | null>(null);
 
   const fetchVendor = useCallback(async () => {
-    const token = Cookies.get("access_token");
-    if (!token) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(`${API_BASE}/vendors/me`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
       if (res.status === 404) {
         setVendor(null);

@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Cookies from "js-cookie";
 import { API_BASE } from "@/lib/api";
 import { useVendor } from "@/hooks/use-vendor";
 
@@ -107,13 +106,12 @@ export default function VendorOnboardingPage() {
     setSubmitting(true);
     setServerError("");
 
-    const token = Cookies.get("access_token");
     try {
       const res = await fetch(`${API_BASE}/vendors/apply`, {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           businessName: form.businessName.trim(),
