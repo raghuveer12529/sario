@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const SORT_OPTIONS = [
   { label: "Relevance", value: "" },
@@ -15,10 +15,17 @@ const FABRIC_FILTERS = [
   "Mysore Silk", "Tussar", "Patola", "Sambalpuri",
 ];
 
+const OCCASION_FILTERS = [
+  "Wedding", "Reception", "Festival", "Puja",
+  "Navratri", "Office", "Casual",
+];
+
 interface SearchControlsProps {
   q: string;
   sort: string;
   fabric: string;
+  categoryId: string;
+  region: string;
   totalHits: number;
 }
 
@@ -37,7 +44,7 @@ function XIcon() {
   );
 }
 
-export function SearchControls({ q, sort, fabric, totalHits }: SearchControlsProps) {
+export function SearchControls({ q, sort, fabric, categoryId, region, totalHits }: SearchControlsProps) {
   const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -49,6 +56,8 @@ export function SearchControls({ q, sort, fabric, totalHits }: SearchControlsPro
     if (nq) params.set("q", nq);
     if (ns) params.set("sort", ns);
     if (nf) params.set("fabric", nf);
+    if (categoryId) params.set("categoryId", categoryId);
+    if (region) params.set("region", region);
     return `/search?${params.toString()}`;
   };
 
@@ -161,35 +170,111 @@ export function SearchControls({ q, sort, fabric, totalHits }: SearchControlsPro
   );
 }
 
-export function SidebarFilters({ q, sort, fabric }: { q: string; sort: string; fabric: string }) {
-  const router = useRouter();
+const PRICE_RANGES = [
+  { label: "Under ₹2,000", min: 0, max: 200000 },
+  { label: "₹2,000 – ₹5,000", min: 200000, max: 500000 },
+  { label: "₹5,000 – ₹10,000", min: 500000, max: 1000000 },
+  { label: "Above ₹10,000", min: 1000000, max: 0 },
+];
 
-  const navigate = (overrides: { fabric?: string; sort?: string }) => {
+const REGIONS = ["Varanasi", "Kanchipuram", "Hyderabad", "Surat", "Kolkata", "Jaipur", "Bhopal", "Cuttack"];
+
+export function SidebarFilters({ q, sort, fabric, categoryId, region, minPrice: minPriceProp, maxPrice: maxPriceProp, occasion }: { q: string; sort: string; fabric: string; categoryId: string; region: string; minPrice: string; maxPrice: string; occasion: string }) {
+  const router = useRouter();
+  const [minPrice, setMinPrice] = useState(Number(minPriceProp) || 0);
+  const [maxPrice, setMaxPrice] = useState(Number(maxPriceProp) || 0);
+
+  useEffect(() => {
+    setMinPrice(Number(minPriceProp) || 0);
+    setMaxPrice(Number(maxPriceProp) || 0);
+  }, [minPriceProp, maxPriceProp]);
+
+  const navigate = (overrides: { fabric?: string; sort?: string; region?: string; minPrice?: number; maxPrice?: number; occasion?: string }) => {
     const params = new URLSearchParams();
-    const nq = q;
     const ns = overrides.sort ?? sort;
     const nf = overrides.fabric ?? fabric;
-    if (nq) params.set("q", nq);
+    const nr = overrides.region ?? region;
+    const nMin = overrides.minPrice ?? minPrice;
+    const nMax = overrides.maxPrice ?? maxPrice;
+    const no = overrides.occasion ?? occasion;
+    if (q) params.set("q", q);
     if (ns) params.set("sort", ns);
     if (nf) params.set("fabric", nf);
+    if (categoryId) params.set("categoryId", categoryId);
+    if (nr) params.set("region", nr);
+    if (nMin) params.set("minPrice", String(nMin));
+    if (nMax) params.set("maxPrice", String(nMax));
+    if (no) params.set("occasion", no);
     router.push(`/search?${params.toString()}`);
   };
+
+  const hasFilters = !!(fabric || region || minPrice || maxPrice || occasion);
 
   return (
     <div className="rounded-xl border border-[#F0F0F0] bg-white overflow-hidden">
       <div className="border-b border-[#F0F0F0] px-4 py-3 flex items-center justify-between">
         <p className="text-sm font-bold text-[#1A1A1A]">Filters</p>
-        {fabric && (
+        {hasFilters && (
           <button
-            onClick={() => navigate({ fabric: "" })}
+            onClick={() => { setMinPrice(0); setMaxPrice(0); navigate({ fabric: "", region: "", minPrice: 0, maxPrice: 0 }); }}
             className="text-xs font-semibold text-primary hover:underline"
           >
-            Clear
+            Clear All
           </button>
         )}
       </div>
 
-      <div className="px-4 py-3">
+      {/* Price Range */}
+      <div className="border-b border-[#F0F0F0] px-4 py-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#696969]">Price Range</p>
+        <div className="space-y-1">
+          {PRICE_RANGES.map((range) => {
+            const isActive = minPrice === range.min && maxPrice === range.max;
+            return (
+              <button
+                key={range.label}
+                onClick={() => {
+                  const newMin = isActive ? 0 : range.min;
+                  const newMax = isActive ? 0 : range.max;
+                  setMinPrice(newMin);
+                  setMaxPrice(newMax);
+                  navigate({ minPrice: newMin, maxPrice: newMax });
+                }}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-[#F5F5F5] ${isActive ? "font-semibold text-primary" : "text-[#4D4D4D]"}`}
+              >
+                <span className={`h-3.5 w-3.5 rounded-full border flex items-center justify-center shrink-0 ${isActive ? "border-primary bg-primary" : "border-[#CCCCCC]"}`}>
+                  {isActive && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+                </span>
+                {range.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Region */}
+      <div className="border-b border-[#F0F0F0] px-4 py-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#696969]">Weaving Region</p>
+        <div className="space-y-1.5">
+          {REGIONS.map((r) => {
+            const active = region === r;
+            return (
+              <button
+                key={r}
+                onClick={() => navigate({ region: active ? "" : r })}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors hover:bg-[#F5F5F5] ${active ? "font-semibold text-primary" : "text-[#4D4D4D]"}`}
+              >
+                <span className={`h-3.5 w-3.5 rounded border flex items-center justify-center shrink-0 ${active ? "border-primary bg-primary" : "border-[#CCCCCC]"}`}>
+                  {active && <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1 4l2 2 4-4" stroke="white" strokeWidth="1.5" /></svg>}
+                </span>
+                {r}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="border-b border-[#F0F0F0] px-4 py-3">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#696969]">Fabric / Type</p>
         <div className="space-y-1.5">
           {FABRIC_FILTERS.map((f) => {
@@ -208,6 +293,28 @@ export function SidebarFilters({ q, sort, fabric }: { q: string; sort: string; f
                   )}
                 </span>
                 {f}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Occasion */}
+      <div className="border-b border-[#F0F0F0] px-4 py-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#696969]">Occasion</p>
+        <div className="space-y-1.5">
+          {OCCASION_FILTERS.map((o) => {
+            const active = occasion === o;
+            return (
+              <button
+                key={o}
+                onClick={() => navigate({ occasion: active ? "" : o })}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors hover:bg-[#F5F5F5] ${active ? "font-semibold text-primary" : "text-[#4D4D4D]"}`}
+              >
+                <span className={`h-3.5 w-3.5 rounded border flex items-center justify-center shrink-0 ${active ? "border-primary bg-primary" : "border-[#CCCCCC]"}`}>
+                  {active && <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1 4l2 2 4-4" stroke="white" strokeWidth="1.5" /></svg>}
+                </span>
+                {o}
               </button>
             );
           })}

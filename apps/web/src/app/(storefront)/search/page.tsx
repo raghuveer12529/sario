@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { apiFetch } from "@/lib/api";
 import Link from "next/link";
+import Image from "next/image";
 import { SearchControls, SidebarFilters } from "./search-controls";
 
 export const metadata: Metadata = { title: "Search Sarees — Sario" };
@@ -32,35 +33,54 @@ export default async function SearchPage({
   const page = Number(searchParams["page"] ?? 1);
   const fabric = searchParams["fabric"] ?? "";
   const sort = searchParams["sort"] ?? "";
+  const categoryId = searchParams["categoryId"] ?? "";
+  const region = searchParams["region"] ?? "";
+  const minPrice = searchParams["minPrice"] ?? "";
+  const maxPrice = searchParams["maxPrice"] ?? "";
+  const occasion = searchParams["occasion"] ?? "";
 
   let result: SearchResult = { hits: [], estimatedTotalHits: 0 };
   try {
     const params = new URLSearchParams({ q, page: String(page), limit: "24" });
-    const categoryId = searchParams["categoryId"];
-    const region = searchParams["region"];
     if (categoryId) params.set("categoryId", categoryId);
     if (region) params.set("region", region);
     if (fabric) params.set("fabric", fabric);
     if (sort) params.set("sort", sort);
-    result = await apiFetch<SearchResult>(`/catalog/search?${params.toString()}`);
+    if (minPrice) params.set("minPrice", minPrice);
+    if (maxPrice) params.set("maxPrice", maxPrice);
+    if (occasion) params.set("occasion", encodeURIComponent(occasion));
+    result = await apiFetch<SearchResult>(`/catalog/search?${params.toString()}`, { cache: "no-store" });
   } catch {
     // API unavailable — show empty state
   }
 
   const totalPages = Math.ceil(result.estimatedTotalHits / 24);
 
+  const buildPageUrl = (p: number) => {
+    const ps = new URLSearchParams();
+    if (q) ps.set("q", q);
+    if (sort) ps.set("sort", sort);
+    if (fabric) ps.set("fabric", fabric);
+    if (categoryId) ps.set("categoryId", categoryId);
+    if (region) ps.set("region", region);
+    if (minPrice) ps.set("minPrice", minPrice);
+    if (maxPrice) ps.set("maxPrice", maxPrice);
+    ps.set("page", String(p));
+    return `/search?${ps.toString()}`;
+  };
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
       <div className="flex gap-6">
         {/* Filters sidebar — desktop only */}
         <aside className="hidden w-52 shrink-0 lg:block">
-          <SidebarFilters q={q} sort={sort} fabric={fabric} />
+          <SidebarFilters q={q} sort={sort} fabric={fabric} categoryId={categoryId} region={region} minPrice={minPrice} maxPrice={maxPrice} occasion={occasion} />
         </aside>
 
         {/* Results */}
         <div className="flex-1 min-w-0">
           {/* Controls: sort, mobile filters, active chips */}
-          <SearchControls q={q} sort={sort} fabric={fabric} totalHits={result.estimatedTotalHits} />
+          <SearchControls q={q} sort={sort} fabric={fabric} categoryId={categoryId} region={region} totalHits={result.estimatedTotalHits} />
 
           {result.hits.length === 0 ? (
             <div className="rounded-xl border border-[#F0F0F0] bg-white py-20 text-center">
@@ -101,10 +121,12 @@ export default async function SearchPage({
                     >
                       <div className="relative aspect-[3/4] overflow-hidden bg-[#F5F5F5]">
                         {hit.primaryImageUrl ? (
-                          <img
+                          <Image
                             src={hit.primaryImageUrl}
                             alt={hit.name}
-                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            fill
+                            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                            className="object-cover transition-transform duration-300 group-hover:scale-105"
                           />
                         ) : (
                           <div className="flex h-full items-center justify-center">
@@ -149,7 +171,7 @@ export default async function SearchPage({
                 <div className="mt-6 flex items-center justify-center gap-2">
                   {page > 1 && (
                     <Link
-                      href={`/search?${new URLSearchParams({ q, sort, fabric, page: String(page - 1) }).toString()}`}
+                      href={buildPageUrl(page - 1)}
                       className="flex items-center gap-1 rounded-lg border border-[#E8E8E8] bg-white px-4 py-2 text-sm font-medium text-[#4D4D4D] hover:border-primary hover:text-primary"
                     >
                       ← Prev
@@ -160,7 +182,7 @@ export default async function SearchPage({
                   </span>
                   {page < totalPages && (
                     <Link
-                      href={`/search?${new URLSearchParams({ q, sort, fabric, page: String(page + 1) }).toString()}`}
+                      href={buildPageUrl(page + 1)}
                       className="flex items-center gap-1 rounded-lg border border-[#E8E8E8] bg-white px-4 py-2 text-sm font-medium text-[#4D4D4D] hover:border-primary hover:text-primary"
                     >
                       Next →
