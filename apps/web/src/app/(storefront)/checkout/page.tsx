@@ -191,18 +191,53 @@ export default function CheckoutPage() {
     rzp.open();
   };
 
-  const openUpiIntent = (razorpayOrderId: string, amountPaise: number) => {
+  const openUpiIntent = (
+    razorpayOrderId: string,
+    amountPaise: number,
+    razorpayKey: string,
+    appName: "google_pay" | "phonepe" | "paytm",
+    onSuccess: (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => void,
+    onDismiss: () => void,
+  ) => {
     const options = {
-      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? "",
+      key: razorpayKey,
       amount: amountPaise,
       currency: "INR",
       order_id: razorpayOrderId,
       method: "upi",
       "_[flow]": "intent",
-      handler: handlePaymentSuccess,
+      upi_app_name: appName,
+      handler: onSuccess,
+      modal: { ondismiss: onDismiss },
     };
     const rzp = new (window as any).Razorpay(options);
     rzp.open();
+  };
+
+  const initiateAndPayUpi = async (appName: "google_pay" | "phonepe" | "paytm") => {
+    if (!selectedAddressId) {
+      setError("Please select or add a delivery address.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiFetch<{ razorpayOrderId: string; amountPaise: number }>("/checkout/initiate", {
+        method: "POST",
+        body: JSON.stringify({ addressId: selectedAddressId }),
+      });
+      openUpiIntent(
+        data.razorpayOrderId,
+        data.amountPaise,
+        process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? "",
+        appName,
+        handlePaymentSuccess,
+        () => setLoading(false),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Checkout failed. Please try again.");
+      setLoading(false);
+    }
   };
 
   const initiateAndPay = async (payFn: (orderId: string, amount: number) => void) => {
@@ -509,12 +544,13 @@ export default function CheckoutPage() {
                     {(["gpay", "phonepe", "paytm"] as const).map((app) => {
                       const labels = { gpay: "GPay", phonepe: "PhonePe", paytm: "Paytm" };
                       const icons = { gpay: "G", phonepe: "Pe", paytm: "P" };
+                      const appNames = { gpay: "google_pay", phonepe: "phonepe", paytm: "paytm" } as const;
                       return (
                         <button
                           key={app}
                           type="button"
                           disabled={loading || !cart}
-                          onClick={() => { void initiateAndPay(openUpiIntent); }}
+                          onClick={() => { void initiateAndPayUpi(appNames[app]); }}
                           className="flex flex-col items-center justify-center gap-1 rounded-xl border border-[#E8E8E8] bg-white py-3 text-xs font-bold text-[#1A1A1A] hover:border-primary transition-colors active:scale-95 disabled:opacity-50 disabled:active:scale-100"
                         >
                           <span className="text-xl font-black">{icons[app]}</span>
