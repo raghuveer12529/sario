@@ -61,6 +61,7 @@ export class StorefrontService {
   async searchProducts(opts: {
     q?: string;
     categoryId?: string;
+    vendorId?: string;
     region?: string;
     fabric?: string;
     occasion?: string;
@@ -80,6 +81,7 @@ export class StorefrontService {
           : `categoryId IN [${allIds.map((id) => `"${id}"`).join(", ")}]`,
       );
     }
+    if (opts.vendorId) filters.push(`vendorId = "${this.sanitizeFilterValue(opts.vendorId)}"`);
     if (opts.region)   filters.push(`region = "${this.sanitizeFilterValue(opts.region)}"`);
     if (opts.fabric)   filters.push(`fabric = "${this.sanitizeFilterValue(opts.fabric)}"`);
     if (opts.occasion) filters.push(`occasion = "${this.sanitizeFilterValue(opts.occasion)}"`);

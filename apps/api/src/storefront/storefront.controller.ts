@@ -28,12 +28,14 @@ export class StorefrontController {
   @ApiQuery({ name: "occasion", required: false })
   @ApiQuery({ name: "minPrice", required: false })
   @ApiQuery({ name: "maxPrice", required: false })
+  @ApiQuery({ name: "vendorId", required: false })
   @ApiQuery({ name: "sort", required: false, description: "e.g. minPricePaise:asc" })
   @ApiQuery({ name: "page", required: false })
   @ApiQuery({ name: "limit", required: false })
   search(
     @Query("q") q?: string,
     @Query("categoryId") categoryId?: string,
+    @Query("vendorId") vendorId?: string,
     @Query("region") region?: string,
     @Query("fabric") fabric?: string,
     @Query("occasion") occasion?: string,
@@ -46,6 +48,7 @@ export class StorefrontController {
     return this.storefrontService.searchProducts({
       ...(q ? { q } : {}),
       ...(categoryId ? { categoryId } : {}),
+      ...(vendorId ? { vendorId } : {}),
       ...(region ? { region } : {}),
       ...(fabric ? { fabric } : {}),
       ...(occasion ? { occasion } : {}),

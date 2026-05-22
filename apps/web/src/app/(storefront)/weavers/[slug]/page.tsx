@@ -2,8 +2,7 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { formatPaise } from "@sario/ui";
-
-const API_BASE = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:4000/v1";
+import { apiFetch } from "@/lib/api";
 
 interface Vendor {
   id: string;
@@ -24,19 +23,23 @@ interface Product {
 }
 
 async function getVendor(slug: string): Promise<Vendor | null> {
-  const res = await fetch(`${API_BASE}/catalog/vendors/${slug}`, { next: { revalidate: 300 } });
-  if (!res.ok) return null;
-  return res.json() as Promise<Vendor>;
+  try {
+    return await apiFetch<Vendor>(`/catalog/vendors/${slug}`, { next: { revalidate: 300 } } as RequestInit);
+  } catch {
+    return null;
+  }
 }
 
 async function getVendorProducts(vendorId: string): Promise<Product[]> {
-  const res = await fetch(
-    `${API_BASE}/catalog/search?vendorId=${encodeURIComponent(vendorId)}&limit=12`,
-    { next: { revalidate: 60 } },
-  );
-  if (!res.ok) return [];
-  const data = (await res.json()) as { hits: Product[] };
-  return data.hits ?? [];
+  try {
+    const data = await apiFetch<{ hits: Product[] }>(
+      `/catalog/search?vendorId=${encodeURIComponent(vendorId)}&limit=12`,
+      { next: { revalidate: 60 } } as RequestInit,
+    );
+    return data.hits ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export default async function WeaverPage({ params }: { params: { slug: string } }) {
@@ -52,7 +55,7 @@ export default async function WeaverPage({ params }: { params: { slug: string } 
         {vendor.bannerUrl && (
           <Image
             src={vendor.bannerUrl}
-            alt={vendor.businessName}
+            alt=""
             fill
             className="object-cover opacity-50"
           />
