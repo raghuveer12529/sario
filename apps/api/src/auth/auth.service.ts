@@ -204,7 +204,7 @@ export class AuthService {
 
     const tokens = await this.issueTokens(user.id, user.email!, "CUSTOMER");
     const { passwordHash: _pw, ...safeUser } = user;
-    return { ...tokens, user: safeUser };
+    return { ...tokens, user: { ...safeUser, email: user.email! } };
   }
 
   async vendorLogin(
@@ -228,7 +228,7 @@ export class AuthService {
 
     const tokens = await this.issueTokens(user.id, user.email!, "VENDOR");
     const { passwordHash: _pw, ...safeUser } = user;
-    return { ...tokens, user: safeUser, vendor };
+    return { ...tokens, user: { ...safeUser, email: user.email! }, vendor };
   }
 
   async adminLogin(email: string, password: string): Promise<{ accessToken: string; admin: { id: string; name: string; email: string; role: string } }> {
@@ -263,10 +263,10 @@ export class AuthService {
       where: { phone },
       update: {},
       create: { phone, isVerified: true },
-      select: { id: true, phone: true, name: true, isVerified: true },
+      select: { id: true, phone: true, email: true, name: true, isVerified: true },
     });
     const tokens = await this.issueTokens(user.id, user.email ?? user.phone ?? "", "CUSTOMER");
-    return { ...tokens, user };
+    return { ...tokens, user: { ...user, email: user.email ?? "" } };
   }
 
   private async issueTokens(userId: string, email: string, role: "CUSTOMER" | "VENDOR"): Promise<AuthTokens> {
