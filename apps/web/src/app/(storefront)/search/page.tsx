@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { Route } from "next";
 import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 import Image from "next/image";
@@ -95,7 +96,7 @@ export default async function SearchPage({
                 {SUGGESTIONS.map((s) => (
                   <Link
                     key={s}
-                    href={`/search?q=${encodeURIComponent(s)}`}
+                    href={`/search?q=${encodeURIComponent(s)}` as Route}
                     className="rounded-full border border-[#E8E8E8] px-3 py-1 text-sm font-medium text-[#4D4D4D] hover:border-primary hover:text-primary"
                   >
                     {s}
@@ -116,7 +117,7 @@ export default async function SearchPage({
                   return (
                     <Link
                       key={hit.id}
-                      href={`/p/${hit.slug}`}
+                      href={`/p/${hit.slug}` as Route}
                       className="group block bg-white rounded-xl border border-[#F0F0F0] overflow-hidden hover:shadow-md hover:border-[#E0E0E0] transition-all"
                     >
                       <div className="relative aspect-[3/4] overflow-hidden bg-[#F5F5F5]">
@@ -171,7 +172,7 @@ export default async function SearchPage({
                 <div className="mt-6 flex items-center justify-center gap-2">
                   {page > 1 && (
                     <Link
-                      href={buildPageUrl(page - 1)}
+                      href={buildPageUrl(page - 1) as Route}
                       className="flex items-center gap-1 rounded-lg border border-[#E8E8E8] bg-white px-4 py-2 text-sm font-medium text-[#4D4D4D] hover:border-primary hover:text-primary"
                     >
                       ← Prev
@@ -182,7 +183,7 @@ export default async function SearchPage({
                   </span>
                   {page < totalPages && (
                     <Link
-                      href={buildPageUrl(page + 1)}
+                      href={buildPageUrl(page + 1) as Route}
                       className="flex items-center gap-1 rounded-lg border border-[#E8E8E8] bg-white px-4 py-2 text-sm font-medium text-[#4D4D4D] hover:border-primary hover:text-primary"
                     >
                       Next →

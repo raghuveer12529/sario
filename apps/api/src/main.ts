@@ -21,11 +21,18 @@ async function bootstrap() {
     new FastifyAdapter({ logger: true }),
   );
 
+  // Cookies (must be registered before any route handler reads req.cookies)
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  await app.register(require("@fastify/cookie") as never, {
+    secret: process.env["COOKIE_SECRET"] ?? "sario-cookie-secret",
+  });
+
   // Security
   await app.register(helmet as never, { crossOriginResourcePolicy: false });
   app.enableCors({
-    origin: process.env["ALLOWED_ORIGINS"]?.split(",") ?? ["http://localhost:3000"],
+    origin: process.env["WEB_ORIGIN"] ?? process.env["ALLOWED_ORIGINS"]?.split(",") ?? "http://localhost:3000",
     credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
   });
 
   // Versioning

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import type { Route } from "next";
 import { useState, useEffect } from "react";
 
 const SORT_OPTIONS = [
@@ -62,7 +63,7 @@ export function SearchControls({ q, sort, fabric, categoryId, region, totalHits 
   };
 
   const navigate = (overrides: Parameters<typeof buildUrl>[0]) => {
-    router.push(buildUrl(overrides));
+    router.push(buildUrl(overrides) as Route);
     setDrawerOpen(false);
   };
 
@@ -205,7 +206,7 @@ export function SidebarFilters({ q, sort, fabric, categoryId, region, minPrice: 
     if (nMin) params.set("minPrice", String(nMin));
     if (nMax) params.set("maxPrice", String(nMax));
     if (no) params.set("occasion", no);
-    router.push(`/search?${params.toString()}`);
+    router.push(`/search?${params.toString()}` as Route);
   };
 
   const hasFilters = !!(fabric || region || minPrice || maxPrice || occasion);

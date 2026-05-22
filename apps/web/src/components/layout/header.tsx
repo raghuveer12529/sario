@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
-
-const NAV_CATEGORIES = [
-  "Sarees", "Kanjivaram", "Banarasi", "Pochampally", "Chanderi",
-  "Mysore Silk", "Tussar", "Patola", "Sambalpuri",
-];
+import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
+import { apiFetch } from "@/lib/api";
+import { CategoryNav } from "./category-nav";
+import type { Category } from "./category-nav";
 
 function SearchIcon() {
   return (
@@ -32,9 +32,35 @@ function PersonIcon() {
   );
 }
 
-export function Header() {
+function MenuIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" />
+    </svg>
+  );
+}
+function XIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+export function Header({ categories = [] }: { categories?: Category[] }) {
   const { user, isAuthenticated, logout } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
+  const pathname = usePathname();
+  const authHref = (isAuthenticated ? "/account/orders" : `/auth?next=${encodeURIComponent(pathname)}`) as Route;
+
+  useEffect(() => {
+    if (!isAuthenticated) { setCartCount(0); return; }
+    apiFetch<{ summary: { itemCount: number } }>("/cart")
+      .then((c) => setCartCount(c.summary?.itemCount ?? 0))
+      .catch(() => null);
+  }, [isAuthenticated, pathname]);
 
   return (
     <header className="sticky top-0 z-40 bg-white shadow-sm border-b border-[#F0F0F0]">
@@ -57,7 +83,7 @@ export function Header() {
 
         <nav className="flex items-center gap-1 sm:gap-2">
           <Link
-            href={isAuthenticated ? "/account/orders" : "/auth"}
+            href={authHref}
             aria-label={isAuthenticated ? "My Orders" : "Sign In"}
             className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[#4D4D4D] transition-colors hover:text-primary"
           >
@@ -67,9 +93,14 @@ export function Header() {
           <Link
             href="/cart"
             aria-label="Shopping Cart"
-            className="flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[#4D4D4D] transition-colors hover:text-primary"
+            className="relative flex flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[#4D4D4D] transition-colors hover:text-primary"
           >
             <CartIcon />
+            {cartCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-extrabold text-white leading-none">
+                {cartCount > 9 ? "9+" : cartCount}
+              </span>
+            )}
             <span className="text-[10px] font-semibold hidden sm:block">Cart</span>
           </Link>
           
@@ -135,6 +166,13 @@ export function Header() {
                     >
                       Profile Settings
                     </Link>
+                    <Link
+                      href="/wishlist"
+                      className="block px-4 py-2.5 text-sm text-[#4D4D4D] hover:bg-[#F5F5F5] hover:text-primary transition-colors"
+                      onClick={() => setShowDropdown(false)}
+                    >
+                      Saved Items
+                    </Link>
                     <div className="border-t border-[#F0F0F0] mt-1">
                       <button
                         onClick={() => { logout(); setShowDropdown(false); }}
@@ -149,28 +187,98 @@ export function Header() {
             </div>
           ) : (
             <Link
-              href="/auth"
+              href={authHref}
               className="ml-1 sm:ml-2 rounded-lg border border-primary px-3 py-1.5 text-xs sm:text-sm font-bold text-primary transition-all hover:bg-primary hover:text-white active:scale-95"
             >
               Sign In
             </Link>
           )}
+          {/* Mobile hamburger — shows on small screens only */}
+          <button
+            onClick={() => setShowMobileMenu(!showMobileMenu)}
+            className="ml-1 flex items-center justify-center rounded-lg p-1.5 text-[#4D4D4D] hover:bg-[#F5F5F5] lg:hidden"
+            aria-label="Browse categories"
+          >
+            {showMobileMenu ? <XIcon /> : <MenuIcon />}
+          </button>
         </nav>
       </div>
 
-      <div className="border-t border-[#F0F0F0] bg-white">
-        <div className="mx-auto flex max-w-7xl items-center gap-6 overflow-x-auto px-4 py-2 scrollbar-none sm:px-6 lg:px-8">
-          {NAV_CATEGORIES.map((cat) => (
-            <Link
-              key={cat}
-              href={`/search?q=${encodeURIComponent(cat)}`}
-              className="shrink-0 text-sm font-medium text-[#4D4D4D] transition-colors hover:text-primary whitespace-nowrap"
-            >
-              {cat}
-            </Link>
-          ))}
-        </div>
-      </div>
+      {/* Mobile category drawer */}
+      {showMobileMenu && (
+        <>
+          <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setShowMobileMenu(false)} />
+          <div className="fixed left-0 top-0 z-40 h-full w-72 overflow-y-auto bg-white shadow-2xl lg:hidden">
+            <div className="flex items-center justify-between border-b border-[#F0F0F0] px-5 py-4">
+              <Link href="/" onClick={() => setShowMobileMenu(false)} className="text-xl font-extrabold text-primary">
+                Sario
+              </Link>
+              <button onClick={() => setShowMobileMenu(false)} className="rounded-lg p-1.5 hover:bg-[#F5F5F5]">
+                <XIcon />
+              </button>
+            </div>
+            <nav className="px-4 py-4">
+              <Link
+                href="/search"
+                onClick={() => setShowMobileMenu(false)}
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-primary hover:bg-primary/5"
+              >
+                🥻 All Sarees
+              </Link>
+              {categories.map((cat) => (
+                <div key={cat.id} className="mt-3">
+                  <Link
+                    href={`/search?categoryId=${cat.id}` as Route}
+                    onClick={() => setShowMobileMenu(false)}
+                    className="flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-semibold text-[#1A1A1A] hover:bg-[#F5F5F5]"
+                  >
+                    {cat.name}
+                  </Link>
+                  {cat.children.length > 0 && (
+                    <div className="ml-4 mt-1 space-y-0.5">
+                      {cat.children.map((child) => (
+                        <Link
+                          key={child.id}
+                          href={`/search?categoryId=${child.id}` as Route}
+                          onClick={() => setShowMobileMenu(false)}
+                          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-[#4D4D4D] hover:bg-[#F5F5F5] hover:text-primary"
+                        >
+                          <span className="h-1 w-1 rounded-full bg-[#CCCCCC]" />
+                          {child.name}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </nav>
+            <div className="border-t border-[#F0F0F0] px-4 py-4 space-y-2">
+              {isAuthenticated ? (
+                <>
+                  <Link href="/account/orders" onClick={() => setShowMobileMenu(false)} className="block rounded-xl border border-[#E8E8E8] px-4 py-2.5 text-sm font-semibold text-[#1A1A1A] hover:border-primary hover:text-primary">
+                    My Orders
+                  </Link>
+                  <Link href="/account/profile" onClick={() => setShowMobileMenu(false)} className="block rounded-xl border border-[#E8E8E8] px-4 py-2.5 text-sm font-semibold text-[#1A1A1A] hover:border-primary hover:text-primary">
+                    Profile Settings
+                  </Link>
+                  <Link href="/wishlist" onClick={() => setShowMobileMenu(false)} className="block rounded-xl border border-[#E8E8E8] px-4 py-2.5 text-sm font-semibold text-[#1A1A1A] hover:border-primary hover:text-primary">
+                    Saved Items
+                  </Link>
+                  <button onClick={() => { logout(); setShowMobileMenu(false); }} className="block w-full rounded-xl border border-red-100 px-4 py-2.5 text-left text-sm font-semibold text-red-600 hover:bg-red-50">
+                    Sign Out
+                  </button>
+                </>
+              ) : (
+                <Link href={authHref} onClick={() => setShowMobileMenu(false)} className="block rounded-xl bg-primary px-4 py-3 text-center text-sm font-bold text-white">
+                  Sign In
+                </Link>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      <CategoryNav categories={categories} />
     </header>
   );
 }
