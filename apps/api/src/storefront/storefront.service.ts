@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
 import { ProductStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MeilisearchService } from "../catalog/meilisearch.service.js";
@@ -11,6 +11,13 @@ export class StorefrontService {
     private readonly search: MeilisearchService,
     private readonly redis: RedisService,
   ) {}
+
+  private sanitizeFilterValue(value: string): string {
+    if (/["\\]/.test(value)) {
+      throw new BadRequestException(`Invalid filter value: "${value}"`);
+    }
+    return value;
+  }
 
   private serializeForCache(value: unknown): string {
     return JSON.stringify(value, (_key, val) =>
@@ -73,9 +80,9 @@ export class StorefrontService {
           : `categoryId IN [${allIds.map((id) => `"${id}"`).join(", ")}]`,
       );
     }
-    if (opts.region) filters.push(`region = "${opts.region}"`);
-    if (opts.fabric) filters.push(`fabric = "${opts.fabric}"`);
-    if (opts.occasion) filters.push(`occasion = "${opts.occasion}"`);
+    if (opts.region)   filters.push(`region = "${this.sanitizeFilterValue(opts.region)}"`);
+    if (opts.fabric)   filters.push(`fabric = "${this.sanitizeFilterValue(opts.fabric)}"`);
+    if (opts.occasion) filters.push(`occasion = "${this.sanitizeFilterValue(opts.occasion)}"`);
     if (opts.minPrice) filters.push(`minPricePaise >= ${opts.minPrice}`);
     if (opts.maxPrice) filters.push(`minPricePaise <= ${opts.maxPrice}`);
 
