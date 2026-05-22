@@ -112,7 +112,9 @@ export class AuthService {
 
     const stored = await this.prisma.refreshToken.findUnique({
       where: { hashedToken: hashed },
-      include: { user: { select: { id: true, email: true, phone: true, deletedAt: true } } },
+      include: {
+        user: { select: { id: true, email: true, phone: true, deletedAt: true } },
+      },
     });
 
     if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
@@ -123,13 +125,15 @@ export class AuthService {
       throw new UnauthorizedException("Account not found.");
     }
 
-    // Rotate: revoke old, issue new
     await this.prisma.refreshToken.update({
       where: { id: stored.id },
       data: { revokedAt: new Date() },
     });
 
-    return this.issueTokens(stored.user.id, stored.user.email ?? stored.user.phone ?? "", "CUSTOMER");
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId: stored.user.id } });
+    const role: "CUSTOMER" | "VENDOR" = vendor ? "VENDOR" : "CUSTOMER";
+
+    return this.issueTokens(stored.user.id, stored.user.email ?? stored.user.phone ?? "", role);
   }
 
   async logout(userId: string, rawRefreshToken: string): Promise<void> {
@@ -229,7 +233,7 @@ export class AuthService {
 
     await this.prisma.adminUser.update({ where: { id: admin.id }, data: { lastLoginAt: new Date() } });
 
-    const payload: JwtPayload = { sub: admin.id, email: admin.email, role: "SUPER_ADMIN" };
+    const payload: JwtPayload = { sub: admin.id, email: admin.email, role: admin.role as "SUPER_ADMIN" | "SUPPORT" };
     const accessToken = this.jwt.sign(payload);
     return { accessToken, admin: { id: admin.id, name: admin.name, email: admin.email, role: admin.role } };
   }

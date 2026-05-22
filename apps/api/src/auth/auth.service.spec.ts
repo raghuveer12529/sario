@@ -229,7 +229,7 @@ describe("AuthService", () => {
       id: "rt_1",
       revokedAt: null,
       expiresAt: new Date(Date.now() + 86400000),
-      user: { id: "usr_1", phone: "9876543210", deletedAt: null },
+      user: { id: "usr_1", email: "buyer@example.com", phone: "9876543210", deletedAt: null },
     };
 
     beforeEach(() => {
@@ -237,6 +237,7 @@ describe("AuthService", () => {
       mockCrypto.generateRefreshToken.mockReturnValue("new-raw-token");
       mockPrisma.refreshToken.create.mockResolvedValue({});
       mockPrisma.refreshToken.update.mockResolvedValue({});
+      mockPrisma.vendor.findUnique.mockResolvedValue(null);
     });
 
     it("rotates and returns new tokens on valid refresh token", async () => {
