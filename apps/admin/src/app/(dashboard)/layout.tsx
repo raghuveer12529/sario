@@ -4,6 +4,23 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
+interface AdminTokenPayload {
+  role?: "SUPER_ADMIN" | "SUPPORT";
+  email?: string;
+  name?: string;
+}
+
+function getAdminPayload(): AdminTokenPayload | null {
+  if (typeof window === "undefined") return null;
+  const token = localStorage.getItem("admin_token");
+  if (!token) return null;
+  try {
+    return JSON.parse(atob(token.split(".")[1] ?? "")) as AdminTokenPayload;
+  } catch {
+    return null;
+  }
+}
+
 function DashboardIcon() {
   return (
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -69,6 +86,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname();
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [adminPayload, setAdminPayload] = useState<AdminTokenPayload | null>(null);
+
+  useEffect(() => {
+    const payload = getAdminPayload();
+    if (!payload || (payload.role !== "SUPER_ADMIN" && payload.role !== "SUPPORT")) {
+      router.push("/login");
+      return;
+    }
+    setAdminPayload(payload);
+  }, [router]);
 
   const handleLogout = () => {
     localStorage.removeItem("admin_token");
@@ -151,11 +178,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
-              <p className="text-xs font-black text-gray-900">Admin User</p>
-              <p className="text-[10px] font-bold text-primary uppercase tracking-tighter">Super Admin</p>
+              <p className="text-xs font-black text-gray-900">{adminPayload?.email ?? "Admin User"}</p>
+              <p className="text-[10px] font-bold text-primary uppercase tracking-tighter">
+                {adminPayload?.role === "SUPPORT" ? "Support" : "Super Admin"}
+              </p>
             </div>
             <div className="h-10 w-10 rounded-xl bg-gray-100 border border-gray-200 overflow-hidden">
-              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Admin" alt="avatar" />
+              <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(adminPayload?.email ?? "Admin")}`} alt="avatar" />
             </div>
           </div>
         </header>

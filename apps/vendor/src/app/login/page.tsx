@@ -3,66 +3,39 @@
 import { useState } from "react";
 import { setVendorToken, API_BASE } from "@/lib/api";
 
-type Step = "phone" | "otp";
+// OTP_DISABLED — kept for re-enable
+// type Step = "phone" | "otp";
 
 export default function VendorLoginPage() {
-  const [step, setStep] = useState<Step>("phone");
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const requestOtp = async (e: React.FormEvent) => {
+  // OTP_DISABLED — kept for re-enable
+  // const [step, setStep] = useState<Step>("phone");
+  // const [phone, setPhone] = useState("");
+  // const [otp, setOtp] = useState("");
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API_BASE}/auth/otp/request`, {
+      const res = await fetch(`${API_BASE}/auth/vendor/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, purpose: "LOGIN" }),
+        body: JSON.stringify({ email, password }),
       });
       if (!res.ok) {
         const body = (await res.json()) as { message?: string };
-        throw new Error(body.message ?? "Failed to send OTP");
+        throw new Error(body.message ?? "Invalid credentials");
       }
-      setStep("otp");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const verifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch(`${API_BASE}/auth/otp/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, otp, purpose: "LOGIN" }),
-      });
-      if (!res.ok) {
-        const body = (await res.json()) as { message?: string };
-        throw new Error(body.message ?? "Invalid OTP");
-      }
-      const data = (await res.json()) as { accessToken: string };
-      setVendorToken(data.accessToken);
-
-      // Verify the user has a vendor profile
-      const vendorRes = await fetch(`${API_BASE}/vendors/me`, {
-        headers: { Authorization: `Bearer ${data.accessToken}` },
-      });
-      if (!vendorRes.ok) {
-        throw new Error("No vendor profile found. Please apply to become a vendor first.");
-      }
-      const vendor = (await vendorRes.json()) as { status: string };
-      if (vendor.status === "SUSPENDED") {
+      const data = (await res.json()) as { accessToken: string; vendor: { status: string } };
+      if (data.vendor.status === "SUSPENDED") {
         throw new Error("Your vendor account has been suspended. Contact support.");
       }
-
+      setVendorToken(data.accessToken);
       window.location.href = "/";
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Something went wrong");
@@ -70,6 +43,64 @@ export default function VendorLoginPage() {
       setLoading(false);
     }
   };
+
+  // OTP_DISABLED — uncomment to re-enable OTP flow
+  // const requestOtp = async (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   setLoading(true);
+  //   setError("");
+  //   try {
+  //     const res = await fetch(`${API_BASE}/auth/otp/request`, {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //       body: JSON.stringify({ phone, purpose: "LOGIN" }),
+  //     });
+  //     if (!res.ok) {
+  //       const body = (await res.json()) as { message?: string };
+  //       throw new Error(body.message ?? "Failed to send OTP");
+  //     }
+  //     setStep("otp");
+  //   } catch (e: unknown) {
+  //     setError(e instanceof Error ? e.message : "Something went wrong");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+  // OTP_DISABLED — uncomment to re-enable OTP flow
+  // const verifyOtp = async (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   setLoading(true);
+  //   setError("");
+  //   try {
+  //     const res = await fetch(`${API_BASE}/auth/otp/verify`, {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //       body: JSON.stringify({ phone, otp, purpose: "LOGIN" }),
+  //     });
+  //     if (!res.ok) {
+  //       const body = (await res.json()) as { message?: string };
+  //       throw new Error(body.message ?? "Invalid OTP");
+  //     }
+  //     const data = (await res.json()) as { accessToken: string };
+  //     setVendorToken(data.accessToken);
+  //     const vendorRes = await fetch(`${API_BASE}/vendors/me`, {
+  //       headers: { Authorization: `Bearer ${data.accessToken}` },
+  //     });
+  //     if (!vendorRes.ok) {
+  //       throw new Error("No vendor profile found. Please apply to become a vendor first.");
+  //     }
+  //     const vendor = (await vendorRes.json()) as { status: string };
+  //     if (vendor.status === "SUSPENDED") {
+  //       throw new Error("Your vendor account has been suspended. Contact support.");
+  //     }
+  //     window.location.href = "/";
+  //   } catch (e: unknown) {
+  //     setError(e instanceof Error ? e.message : "Something went wrong");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30">
@@ -82,74 +113,46 @@ export default function VendorLoginPage() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold">Sario Vendor</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {step === "phone" ? "Sign in to your vendor dashboard" : `Enter the OTP sent to ${phone}`}
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">Sign in to your vendor dashboard</p>
         </div>
 
-        {step === "phone" ? (
-          <form onSubmit={(e) => { void requestOtp(e); }} className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Phone number</label>
-              <input
-                type="tel"
-                placeholder="+91 98765 43210"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                required
-                className="w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-              />
+        <form onSubmit={(e) => { void handleLogin(e); }} className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Email address</label>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Password</label>
+            <input
+              type="password"
+              minLength={6}
+              placeholder="Min. 6 characters"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
             </div>
-            {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={loading || !phone}
-              className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {loading ? "Sending OTP…" : "Send OTP"}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={(e) => { void verifyOtp(e); }} className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">One-time password</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="• • • • • •"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                required
-                autoFocus
-                className="w-full rounded-lg border bg-background px-3 py-2 text-center text-lg font-mono tracking-widest outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-            {error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={loading || otp.length < 4}
-              className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {loading ? "Verifying…" : "Verify & Sign in"}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setStep("phone"); setOtp(""); setError(""); }}
-              className="w-full text-sm text-muted-foreground hover:text-foreground"
-            >
-              Change phone number
-            </button>
-          </form>
-        )}
+          )}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {loading ? "Signing in…" : "Sign In"}
+          </button>
+        </form>
       </div>
     </div>
   );

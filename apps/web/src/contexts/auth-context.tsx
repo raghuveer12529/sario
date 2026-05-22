@@ -14,9 +14,9 @@ import { API_BASE } from "@/lib/api";
 
 export interface User {
   id: string;
-  phone: string;
-  name?: string;
-  email?: string;
+  email: string;
+  phone?: string | null;
+  name: string | null;
   avatarUrl?: string;
   isVerified: boolean;
 }

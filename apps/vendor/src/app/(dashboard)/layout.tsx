@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { clearVendorToken, vendorFetch } from "@/lib/api";
+import { clearVendorToken, getVendorToken, vendorFetch } from "@/lib/api";
+
+function getRoleFromToken(token: string): string | null {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1] ?? "")) as { role?: string };
+    return payload.role ?? null;
+  } catch {
+    return null;
+  }
+}
 
 interface VendorProfile {
   businessName: string;
@@ -77,6 +86,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [vendor, setVendor] = useState<VendorProfile | null>(null);
 
   useEffect(() => {
+    const token = getVendorToken();
+    if (!token || getRoleFromToken(token) !== "VENDOR") {
+      router.push("/login");
+      return;
+    }
     vendorFetch<VendorProfile>("/vendors/me")
       .then(setVendor)
       .catch(() => router.push("/login"));

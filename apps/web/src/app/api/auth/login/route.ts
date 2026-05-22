@@ -4,7 +4,7 @@ const API_URL = process.env.API_URL ?? "http://localhost:4000/v1";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const upstream = await fetch(`${API_URL}/auth/otp/verify`, {
+  const upstream = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   const data = (await upstream.json()) as {
     accessToken: string;
     refreshToken: string;
-    user: { id: string; phone: string; name: string | null; isVerified: boolean };
+    user: { id: string; email: string; phone?: string | null; name: string | null; isVerified: boolean };
   };
 
   const res = NextResponse.json({ user: data.user, refreshToken: data.refreshToken });
