@@ -140,6 +140,29 @@ export default function CheckoutPage() {
     razorpay_signature: string;
   }
 
+  const handlePaymentSuccess = async (response: RazorpayResponse) => {
+    setLoading(true);
+    try {
+      const result = await apiFetch<{ orderNumber?: string }>("/checkout/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          razorpayOrderId: response.razorpay_order_id,
+          razorpayPaymentId: response.razorpay_payment_id,
+          razorpaySignature: response.razorpay_signature,
+        }),
+      });
+      if (result.orderNumber) setOrderNumber(result.orderNumber);
+      const eta = new Date();
+      eta.setDate(eta.getDate() + 7);
+      setEstimatedDelivery(eta.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }));
+      setStep("done");
+    } catch {
+      setError("Payment verification failed. If money was deducted, please contact support.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handlePayment = (razorpayOrderId: string, amountPaise: number) => {
     const options = {
       key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
@@ -148,28 +171,7 @@ export default function CheckoutPage() {
       name: "Sario",
       description: "Saree Purchase",
       order_id: razorpayOrderId,
-      handler: async (response: RazorpayResponse) => {
-        setLoading(true);
-        try {
-          const result = await apiFetch<{ orderNumber?: string }>("/checkout/verify", {
-            method: "POST",
-            body: JSON.stringify({
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
-            }),
-          });
-          if (result.orderNumber) setOrderNumber(result.orderNumber);
-          const eta = new Date();
-          eta.setDate(eta.getDate() + 7);
-          setEstimatedDelivery(eta.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }));
-          setStep("done");
-        } catch {
-          setError("Payment verification failed. If money was deducted, please contact support.");
-        } finally {
-          setLoading(false);
-        }
-      },
+      handler: handlePaymentSuccess,
       prefill: {
         name: user?.name ?? "",
         contact: user?.phone ?? "",
@@ -187,6 +189,39 @@ export default function CheckoutPage() {
 
     const rzp = new (window as any).Razorpay(options);
     rzp.open();
+  };
+
+  const openUpiIntent = (razorpayOrderId: string, amountPaise: number) => {
+    const options = {
+      key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? "",
+      amount: amountPaise,
+      currency: "INR",
+      order_id: razorpayOrderId,
+      method: "upi",
+      "_[flow]": "intent",
+      handler: handlePaymentSuccess,
+    };
+    const rzp = new (window as any).Razorpay(options);
+    rzp.open();
+  };
+
+  const initiateAndPay = async (payFn: (orderId: string, amount: number) => void) => {
+    if (!selectedAddressId) {
+      setError("Please select or add a delivery address.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiFetch<{ razorpayOrderId: string; amountPaise: number }>("/checkout/initiate", {
+        method: "POST",
+        body: JSON.stringify({ addressId: selectedAddressId }),
+      });
+      payFn(data.razorpayOrderId, data.amountPaise);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Checkout failed. Please try again.");
+      setLoading(false);
+    }
   };
 
   const isDev = process.env.NODE_ENV === "development";
@@ -208,28 +243,25 @@ export default function CheckoutPage() {
   };
 
   const placeOrder = async () => {
-    if (!selectedAddressId) {
-      setError("Please select or add a delivery address.");
-      return;
-    }
-    
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiFetch<{ razorpayOrderId: string; amountPaise: number }>("/checkout/initiate", {
-        method: "POST",
-        body: JSON.stringify({ addressId: selectedAddressId }),
-      });
-      
-      // If we're in dev and no Razorpay key is set, show a prompt or just use devConfirm
-      if (isDev && !process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID) {
-        await devConfirm(data.razorpayOrderId);
-      } else {
-        handlePayment(data.razorpayOrderId, data.amountPaise);
+    if (isDev && !process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID) {
+      if (!selectedAddressId) {
+        setError("Please select or add a delivery address.");
+        return;
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Checkout failed. Please try again.");
-      setLoading(false);
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await apiFetch<{ razorpayOrderId: string; amountPaise: number }>("/checkout/initiate", {
+          method: "POST",
+          body: JSON.stringify({ addressId: selectedAddressId }),
+        });
+        await devConfirm(data.razorpayOrderId);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Checkout failed. Please try again.");
+        setLoading(false);
+      }
+    } else {
+      await initiateAndPay(handlePayment);
     }
   };
 
@@ -468,6 +500,30 @@ export default function CheckoutPage() {
                     <p className="text-sm font-bold text-[#856404]">Razorpay Secure Payment</p>
                     <p className="text-[11px] text-[#856404]/80">UPI, Cards, Net Banking, Wallets supported</p>
                   </div>
+                </div>
+
+                {/* UPI intent shortcuts — mobile only */}
+                <div className="mb-4 sm:hidden">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#696969]">Pay Instantly with UPI</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["gpay", "phonepe", "paytm"] as const).map((app) => {
+                      const labels = { gpay: "GPay", phonepe: "PhonePe", paytm: "Paytm" };
+                      const icons = { gpay: "G", phonepe: "Pe", paytm: "P" };
+                      return (
+                        <button
+                          key={app}
+                          type="button"
+                          disabled={loading || !cart}
+                          onClick={() => { void initiateAndPay(openUpiIntent); }}
+                          className="flex flex-col items-center justify-center gap-1 rounded-xl border border-[#E8E8E8] bg-white py-3 text-xs font-bold text-[#1A1A1A] hover:border-primary transition-colors active:scale-95 disabled:opacity-50 disabled:active:scale-100"
+                        >
+                          <span className="text-xl font-black">{icons[app]}</span>
+                          {labels[app]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-center text-[10px] text-[#9B9B9B]">or use any method below</p>
                 </div>
 
                 <button
