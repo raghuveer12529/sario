@@ -194,6 +194,30 @@ export class AuthService {
     return { ...tokens, user: safeUser };
   }
 
+  async vendorLogin(
+    email: string,
+    password: string,
+  ): Promise<AuthResponse & { vendor: { id: string; businessName: string; status: string } }> {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, phone: true, name: true, isVerified: true, passwordHash: true },
+    });
+
+    if (!user || !user.passwordHash) throw new UnauthorizedException("Invalid credentials.");
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) throw new UnauthorizedException("Invalid credentials.");
+
+    const vendor = await this.prisma.vendor.findUnique({
+      where: { userId: user.id },
+      select: { id: true, businessName: true, status: true },
+    });
+    if (!vendor) throw new ForbiddenException("No vendor account found.");
+
+    const tokens = await this.issueTokens(user.id, user.email!, "VENDOR");
+    const { passwordHash: _pw, ...safeUser } = user;
+    return { ...tokens, user: safeUser, vendor };
+  }
+
   async adminLogin(email: string, password: string): Promise<{ accessToken: string; admin: { id: string; name: string; email: string; role: string } }> {
     const admin = await this.prisma.adminUser.findUnique({
       where: { email, deletedAt: null },

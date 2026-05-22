@@ -1,5 +1,5 @@
 import { Test, type TestingModule } from "@nestjs/testing";
-import { BadRequestException, HttpException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, HttpException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { OtpPurpose } from "@sario/db";
@@ -33,6 +33,9 @@ const mockPrisma = {
     findUnique: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn(),
+  },
+  vendor: {
+    findUnique: jest.fn(),
   },
 };
 
@@ -351,6 +354,57 @@ describe("AuthService", () => {
     it("throws UnauthorizedException when user has no passwordHash", async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ ...fakeUser, passwordHash: null });
       await expect(service.login(email, password)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  // ─── vendorLogin ──────────────────────────────────────────────────────────
+
+  describe("vendorLogin", () => {
+    const email = "seller@example.com";
+    const password = "secret123";
+    const fakeUser = {
+      id: "usr_2",
+      email,
+      phone: null,
+      name: null,
+      isVerified: true,
+      passwordHash: "hashed-pw",
+    };
+    const fakeVendor = { id: "ven_1", businessName: "Silk House", status: "APPROVED" };
+
+    beforeEach(() => {
+      mockCrypto.generateRefreshToken.mockReturnValue("raw-refresh");
+      mockCrypto.hashRefreshToken.mockReturnValue("hashed-refresh");
+      mockPrisma.refreshToken.create.mockResolvedValue({});
+    });
+
+    it("returns tokens and vendor on valid credentials", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(fakeUser);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+      mockPrisma.vendor.findUnique.mockResolvedValue(fakeVendor);
+
+      const result = await service.vendorLogin(email, password);
+
+      expect(result.accessToken).toBe("signed-access-token");
+      expect(result.vendor.businessName).toBe("Silk House");
+    });
+
+    it("throws UnauthorizedException when user not found", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      await expect(service.vendorLogin(email, password)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it("throws UnauthorizedException when password wrong", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(fakeUser);
+      mockBcrypt.compare.mockResolvedValue(false as never);
+      await expect(service.vendorLogin(email, password)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it("throws ForbiddenException when user has no vendor record", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(fakeUser);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+      mockPrisma.vendor.findUnique.mockResolvedValue(null);
+      await expect(service.vendorLogin(email, password)).rejects.toThrow(ForbiddenException);
     });
   });
 });
