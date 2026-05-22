@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
-import { ProductStatus } from "@sario/db";
+import { ProductStatus, VendorStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MeilisearchService } from "../catalog/meilisearch.service.js";
 import { RedisService } from "../redis/redis.service.js";
@@ -146,6 +146,15 @@ export class StorefrontService {
       },
       orderBy: { sortOrder: "asc" },
     });
+  }
+
+  async getVendorBySlug(slug: string) {
+    const vendor = await this.prisma.vendor.findUnique({
+      where: { slug, status: VendorStatus.APPROVED, deletedAt: null },
+      select: { id: true, businessName: true, slug: true, about: true, bannerUrl: true },
+    });
+    if (!vendor) throw new NotFoundException("Vendor not found.");
+    return vendor;
   }
 
   async getFeaturedProducts(limit = 12) {

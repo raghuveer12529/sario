@@ -62,4 +62,10 @@ export class StorefrontController {
   getProduct(@Param("slug") slug: string) {
     return this.storefrontService.getProductBySlug(slug);
   }
+
+  @Get("vendors/:slug")
+  @ApiOperation({ summary: "Get approved vendor by slug" })
+  getVendorBySlug(@Param("slug") slug: string) {
+    return this.storefrontService.getVendorBySlug(slug);
+  }
 }

@@ -17,7 +17,7 @@ interface ProductDetail {
   region?: string;
   weaverStory?: string;
   giTag?: string;
-  vendor: { businessName: string; about?: string };
+  vendor: { businessName: string; slug: string; about?: string };
   category: { name: string };
   variants: Array<{
     id: string;
@@ -153,7 +153,9 @@ export default async function ProductPage({ params }: { params: { slug: string }
               <h1 className="text-2xl font-extrabold text-[#1A1A1A] leading-tight">{product.name}</h1>
               <div className="mt-3 flex items-center gap-2 text-xs">
                 <span className="text-[#696969]">Sold by</span>
-                <span className="font-bold text-primary hover:underline cursor-pointer">{product.vendor.businessName}</span>
+                <Link href={`/weavers/${product.vendor.slug}` as Route} className="font-medium hover:underline text-[#C9A96E]">
+                  {product.vendor.businessName}
+                </Link>
               </div>
 
               {totalStock === 0 && (
