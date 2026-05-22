@@ -2,11 +2,13 @@ import { Test, type TestingModule } from "@nestjs/testing";
 import { BadRequestException, ForbiddenException, HttpException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
-import { OtpPurpose } from "@sario/db";
+// OTP_DISABLED
+// import { OtpPurpose } from "@sario/db";
 import { AuthService } from "./auth.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { RedisService } from "../redis/redis.service.js";
-import { Msg91Service } from "../msg91/msg91.service.js";
+// OTP_DISABLED
+// import { Msg91Service } from "../msg91/msg91.service.js";
 import * as cryptoUtil from "../common/crypto.util.js";
 import * as bcrypt from "bcrypt";
 
@@ -44,9 +46,8 @@ const mockRedis = {
   expire: jest.fn(),
 };
 
-const mockMsg91 = {
-  sendOtp: jest.fn(),
-};
+// OTP_DISABLED
+// const mockMsg91 = { sendOtp: jest.fn() };
 
 const mockJwt = {
   sign: jest.fn().mockReturnValue("signed-access-token"),
@@ -68,7 +69,7 @@ describe("AuthService", () => {
         AuthService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: RedisService, useValue: mockRedis },
-        { provide: Msg91Service, useValue: mockMsg91 },
+        // OTP_DISABLED: { provide: Msg91Service, useValue: mockMsg91 },
         { provide: JwtService, useValue: mockJwt },
         { provide: ConfigService, useValue: mockConfig },
       ],
@@ -77,6 +78,8 @@ describe("AuthService", () => {
     service = module.get<AuthService>(AuthService);
   });
 
+  // OTP_DISABLED — remove comment block to re-enable
+  /*
   // ─── requestOtp ───────────────────────────────────────────────────────────
 
   describe("requestOtp", () => {
@@ -220,6 +223,7 @@ describe("AuthService", () => {
       );
     });
   });
+  */
 
   // ─── refresh ──────────────────────────────────────────────────────────────
 

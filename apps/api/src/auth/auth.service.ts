@@ -1,44 +1,52 @@
 import {
   Injectable,
-  BadRequestException,
+  // OTP_DISABLED: BadRequestException,
   UnauthorizedException,
   ForbiddenException,
   Logger,
-  InternalServerErrorException,
-  HttpException,
-  HttpStatus,
+  // OTP_DISABLED: InternalServerErrorException,
+  // OTP_DISABLED: HttpException,
+  // OTP_DISABLED: HttpStatus,
 } from "@nestjs/common";
 import * as bcrypt from "bcrypt";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
-import { OtpPurpose } from "@sario/db";
-import { OTP_TTL_SECONDS, OTP_MAX_ATTEMPTS_PER_HOUR, REFRESH_TOKEN_TTL_DAYS } from "@sario/shared";
+// OTP_DISABLED
+// import { OtpPurpose } from "@sario/db";
+// OTP_DISABLED
+// import { OTP_TTL_SECONDS, OTP_MAX_ATTEMPTS_PER_HOUR, REFRESH_TOKEN_TTL_DAYS } from "@sario/shared";
+import { REFRESH_TOKEN_TTL_DAYS } from "@sario/shared";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { RedisService } from "../redis/redis.service.js";
-import { Msg91Service } from "../msg91/msg91.service.js";
+// OTP_DISABLED
+// import { Msg91Service } from "../msg91/msg91.service.js";
 import {
-  generateOtp,
-  hashOtp,
-  verifyOtp,
+  // OTP_DISABLED
+  // generateOtp,
+  // hashOtp,
+  // verifyOtp,
   generateRefreshToken,
   hashRefreshToken,
 } from "../common/crypto.util.js";
 import type { AuthResponse, AuthTokens, JwtPayload } from "./auth.types.js";
 
-const OTP_MAX_VERIFY_ATTEMPTS = 5;
+// OTP_DISABLED
+// const OTP_MAX_VERIFY_ATTEMPTS = 5;
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
+  // OTP_DISABLED: private readonly msg91: Msg91Service, removed from constructor
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
-    private readonly msg91: Msg91Service,
   ) {}
 
+  // OTP_DISABLED — remove this block comment to re-enable OTP flow
+  /*
   async requestOtp(phone: string, purpose: OtpPurpose): Promise<{ expiresIn: number }> {
     await this.enforceOtpRateLimit(phone);
 
@@ -106,6 +114,7 @@ export class AuthService {
     const tokens = await this.issueTokens(user.id, user.email ?? user.phone ?? "", "CUSTOMER");
     return { ...tokens, user };
   }
+  */
 
   async refresh(rawRefreshToken: string): Promise<AuthTokens> {
     const hashed = hashRefreshToken(rawRefreshToken);
@@ -275,6 +284,8 @@ export class AuthService {
     return { accessToken, refreshToken: raw };
   }
 
+  // OTP_DISABLED — remove this block comment to re-enable OTP flow
+  /*
   private async enforceOtpRateLimit(phone: string): Promise<void> {
     const key = `otp:rate:${phone}`;
     const count = await this.redis.incr(key);
@@ -288,4 +299,5 @@ export class AuthService {
       );
     }
   }
+  */
 }
