@@ -39,6 +39,12 @@ export class ProductController {
     return this.productService.softDelete(user.id, id);
   }
 
+  @Get(":id")
+  @ApiOperation({ summary: "Get a single vendor product by ID" })
+  getOne(@CurrentUser() user: CurrentUserPayload, @Param("id") id: string) {
+    return this.productService.getForVendor(user.id, id);
+  }
+
   @Get()
   @ApiOperation({ summary: "List own products with optional filters" })
   @ApiQuery({ name: "status", enum: ProductStatus, required: false })

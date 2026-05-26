@@ -11,6 +11,8 @@ interface SearchableProduct {
   tags: string[];
   categoryId: string;
   vendorId: string;
+  vendorName: string;
+  vendorSlug: string;
   minPricePaise: number;
   primaryImageUrl?: string;
   occasion: string[];

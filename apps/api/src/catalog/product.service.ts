@@ -100,7 +100,11 @@ export class ProductService {
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
-        include: { variants: { select: { pricePaise: true, inventory: true } }, images: { where: { isPrimary: true }, take: 1 } },
+        include: {
+          variants: { include: { inventory: { select: { quantity: true, reservedQuantity: true } } } },
+          images: { where: { isPrimary: true }, take: 1 },
+          category: { select: { id: true, name: true } },
+        },
         skip: (opts.page - 1) * opts.limit,
         take: opts.limit,
         orderBy: { createdAt: "desc" },
@@ -110,12 +114,30 @@ export class ProductService {
     return { data, meta: { total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit) } };
   }
 
+  async getForVendor(vendorId: string, productId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId, deletedAt: null },
+      include: {
+        variants: { include: { inventory: { select: { quantity: true, reservedQuantity: true } } } },
+        images: true,
+        category: { select: { id: true, name: true } },
+      },
+    });
+    if (!product) throw new NotFoundException("Product not found.");
+    if (product.vendorId !== vendorId) throw new ForbiddenException("Not your product.");
+    return product;
+  }
+
   // Called by admin approval flow
   async approveAndIndex(productId: string) {
     const product = await this.prisma.product.update({
       where: { id: productId },
       data: { status: ProductStatus.APPROVED, searchIndexedAt: new Date() },
-      include: { variants: { select: { pricePaise: true } }, images: { where: { isPrimary: true }, take: 1 } },
+      include: {
+        variants: { select: { pricePaise: true } },
+        images: { where: { isPrimary: true }, take: 1 },
+        vendor: { select: { businessName: true, slug: true } },
+      },
     });
 
     await this.redis.del(`product:slug:${product.slug}`).catch(() => {});
@@ -132,6 +154,8 @@ export class ProductService {
       occasion: product.occasion,
       categoryId: product.categoryId,
       vendorId: product.vendorId,
+      vendorName: product.vendor.businessName,
+      vendorSlug: product.vendor.slug,
       minPricePaise,
       ...(product.images[0]?.url ? { primaryImageUrl: product.images[0].url } : {}),
     });
