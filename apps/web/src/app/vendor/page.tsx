@@ -28,25 +28,29 @@ const STATUS_BADGE: Partial<Record<OrderStatus, { bg: string; text: string; labe
 export default function VendorDashboardPage() {
   const [products, setProducts] = useState<ProductsResponse | null>(null);
   const [orders, setOrders] = useState<OrdersResponse | null>(null);
+  const [pendingOrderCount, setPendingOrderCount] = useState(0);
+  const [pendingReturnCount, setPendingReturnCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       apiFetch<ProductsResponse>("/vendors/me/products?limit=100"),
       apiFetch<OrdersResponse>("/vendors/me/orders?limit=5"),
+      apiFetch<{ meta: { total: number } }>("/vendors/me/orders?status=CONFIRMED&limit=1"),
+      apiFetch<{ meta: { total: number } }>("/vendors/me/orders?status=PACKED&limit=1"),
+      apiFetch<{ meta: { total: number } }>("/vendors/me/orders?status=RETURN_REQUESTED&limit=1"),
     ])
-      .then(([p, o]) => { setProducts(p); setOrders(o); })
+      .then(([p, o, confirmed, packed, returnRequested]) => {
+        setProducts(p);
+        setOrders(o);
+        setPendingOrderCount(confirmed.meta.total + packed.meta.total);
+        setPendingReturnCount(returnRequested.meta.total);
+      })
       .catch(() => null)
       .finally(() => setLoading(false));
   }, []);
 
   const totalProducts = products?.meta.total ?? 0;
-  const pendingOrders = orders?.data.filter((o) =>
-    ["CONFIRMED", "PACKED"].includes(o.status)
-  ).length ?? 0;
-  const pendingReturns = orders?.data.filter((o) =>
-    o.status === "RETURN_REQUESTED"
-  ).length ?? 0;
 
   return (
     <div className="space-y-6">
@@ -56,8 +60,8 @@ export default function VendorDashboardPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard label="Total Products" value={totalProducts} loading={loading} />
-        <StatCard label="Orders to Process" value={pendingOrders} loading={loading} />
-        <StatCard label="Pending Returns" value={pendingReturns} loading={loading} />
+        <StatCard label="Orders to Process" value={pendingOrderCount} loading={loading} />
+        <StatCard label="Pending Returns" value={pendingReturnCount} loading={loading} />
       </div>
 
       <div className="flex gap-3">
