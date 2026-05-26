@@ -52,28 +52,31 @@ interface Props {
 export function OrderRow({ order, onRefetch }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   const badge = STATUS_BADGE[order.status] ?? { bg: "bg-gray-100", text: "text-gray-600", label: order.status };
 
   const advance = async () => {
+    setActionError("");
     setActionLoading(true);
     try {
       await apiFetch(`/vendors/me/orders/${order.id}/advance`, { method: "POST" });
       onRefetch();
-    } catch {
-      // silent
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : "Action failed. Please try again.");
     } finally {
       setActionLoading(false);
     }
   };
 
   const ship = async () => {
+    setActionError("");
     setActionLoading(true);
     try {
       await apiFetch(`/vendors/me/orders/${order.id}/ship`, { method: "POST" });
       onRefetch();
-    } catch {
-      // silent
+    } catch (e: unknown) {
+      setActionError(e instanceof Error ? e.message : "Failed to create shipment. Please try again.");
     } finally {
       setActionLoading(false);
     }
@@ -139,24 +142,29 @@ export function OrderRow({ order, onRefetch }: Props) {
           </div>
 
           {(order.status === "CONFIRMED" || order.status === "PACKED") && (
-            <div className="border-t border-[#F0F0F0] bg-gray-50/30 px-5 py-3 flex gap-2">
-              {order.status === "CONFIRMED" && (
-                <button
-                  onClick={() => { void advance(); }}
-                  disabled={actionLoading}
-                  className="rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
-                >
-                  {actionLoading ? "…" : "Mark Packed"}
-                </button>
-              )}
-              {order.status === "PACKED" && (
-                <button
-                  onClick={() => { void ship(); }}
-                  disabled={actionLoading}
-                  className="rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
-                >
-                  {actionLoading ? "…" : "Create Shipment"}
-                </button>
+            <div className="border-t border-[#F0F0F0] bg-gray-50/30 px-5 py-3 flex flex-col gap-2">
+              <div className="flex gap-2">
+                {order.status === "CONFIRMED" && (
+                  <button
+                    onClick={() => { void advance(); }}
+                    disabled={actionLoading}
+                    className="rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    {actionLoading ? "…" : "Mark Packed"}
+                  </button>
+                )}
+                {order.status === "PACKED" && (
+                  <button
+                    onClick={() => { void ship(); }}
+                    disabled={actionLoading}
+                    className="rounded-lg bg-primary px-4 py-2 text-xs font-bold text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    {actionLoading ? "…" : "Create Shipment"}
+                  </button>
+                )}
+              </div>
+              {actionError && (
+                <p className="mt-2 text-xs text-red-600">{actionError}</p>
               )}
             </div>
           )}

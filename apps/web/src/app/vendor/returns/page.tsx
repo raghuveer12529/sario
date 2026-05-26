@@ -17,8 +17,10 @@ export default function VendorReturnsPage() {
   const [pending, setPending] = useState<VendorOrder[]>([]);
   const [history, setHistory] = useState<VendorOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
 
   const fetchReturns = useCallback(async () => {
+    setFetchError("");
     setLoading(true);
     try {
       const [pendingRes, approvedRes, rejectedRes] = await Promise.all([
@@ -30,8 +32,8 @@ export default function VendorReturnsPage() {
       setHistory([...approvedRes.data, ...rejectedRes.data].sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       ));
-    } catch {
-      // silent
+    } catch (e: unknown) {
+      setFetchError(e instanceof Error ? e.message : "Failed to load returns.");
     } finally {
       setLoading(false);
     }
@@ -58,6 +60,10 @@ export default function VendorReturnsPage() {
           </button>
         ))}
       </div>
+
+      {fetchError && (
+        <p className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm text-red-700">{fetchError}</p>
+      )}
 
       {loading ? (
         <div className="space-y-4">
