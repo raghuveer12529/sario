@@ -248,8 +248,59 @@ Save button → inline success/error message below form.
 - Skeleton loading states for data-heavy pages (not full-page spinners)
 - No new backend endpoints required — frontend only
 
+## Section 8: Vendor Attribution on Storefront Cards
+
+Product cards on the home page and search results do not currently show which vendor sells each product. Adding "Sold by [name]" links these surfaces to the vendor store page and makes the multi-vendor nature of the platform visible to buyers.
+
+### Backend change — `product.service.ts` `approveAndIndex`
+
+Add `vendorName` and `vendorSlug` to the Meilisearch document. The Prisma query in `approveAndIndex` must include the vendor:
+
+```ts
+include: {
+  variants: { select: { pricePaise: true } },
+  images: { where: { isPrimary: true }, take: 1 },
+  vendor: { select: { businessName: true, slug: true } },   // add this
+},
+```
+
+Then add to the `search.upsert` call:
+
+```ts
+vendorName: product.vendor.businessName,
+vendorSlug: product.vendor.slug,
+```
+
+### Frontend changes
+
+**`apps/web/src/app/(storefront)/search/page.tsx`**
+
+Add to `SearchHit` interface:
+```ts
+vendorName?: string;
+vendorSlug?: string;
+```
+
+Add below product name in each card:
+```tsx
+{hit.vendorName && hit.vendorSlug && (
+  <Link href={`/weavers/${hit.vendorSlug}`} className="text-[10px] text-[#9B9B9B] hover:text-primary truncate">
+    {hit.vendorName}
+  </Link>
+)}
+```
+
+**`apps/web/src/app/(storefront)/page.tsx`**
+
+Same pattern on featured and new-arrivals product cards. The `Product` interface (from `/catalog/featured` and `/catalog/search`) needs `vendorName` and `vendorSlug` added.
+
+Note: existing products already in the Meilisearch index will not have `vendorName`/`vendorSlug` until they are re-indexed. Re-indexing is out of scope here — the field will appear for newly approved products. A one-time re-index script can be run separately.
+
+---
+
 ## Out of Scope
 
 - Product image upload (UI placeholder only — no upload endpoint exists yet)
 - Vendor analytics or revenue charts beyond the 3 dashboard stat cards
 - Buyer messaging or chat
+- Re-indexing existing Meilisearch documents (vendor attribution only applies to newly approved products until a separate migration runs)
