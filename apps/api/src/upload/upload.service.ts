@@ -27,6 +27,10 @@ export class UploadService {
     });
   }
 
+  get publicUrlBase(): string {
+    return this.publicUrl;
+  }
+
   isAllowedType(contentType: string): contentType is AllowedType {
     return (ALLOWED_TYPES as readonly string[]).includes(contentType);
   }

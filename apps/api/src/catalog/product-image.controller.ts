@@ -45,7 +45,8 @@ export class ProductImageController {
       throw new BadRequestException("Only jpeg, png, and webp images are allowed.");
     }
 
-    const ext = dto.filename.split(".").pop() ?? "jpg";
+    const dotIdx = dto.filename.lastIndexOf(".");
+    const ext = dotIdx >= 0 ? dto.filename.slice(dotIdx + 1) : "jpg";
     const key = `products/${productId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const { presignedUrl, publicUrl } = await this.upload.presign(key, dto.contentType);
     return { presignedUrl, publicUrl, key };
@@ -59,6 +60,10 @@ export class ProductImageController {
     @Body() dto: SaveImageDto,
   ) {
     await this.products.getForVendor(user.id, productId);
+
+    if (!dto.url.startsWith(this.upload.publicUrlBase + "/")) {
+      throw new BadRequestException("Image URL must originate from the configured storage bucket.");
+    }
 
     if (dto.isPrimary) {
       await this.prisma.productImage.updateMany({
@@ -109,7 +114,7 @@ export class ProductImageController {
       data: { isPrimary: false },
     });
     return this.prisma.productImage.update({
-      where: { id: imageId },
+      where: { id: imageId, productId },
       data: { isPrimary: true },
     });
   }
