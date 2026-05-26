@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the complete vendor portal frontend at `apps/web/src/app/vendor/` including layout, onboarding, dashboard, products, orders, returns, and profile — plus vendor attribution on storefront cards.
+**Goal:** Build the complete vendor portal frontend at `apps/web/src/app/vendor/` including layout, onboarding, dashboard, products (with image upload), orders, returns, and profile — plus vendor attribution on storefront cards.
 
-**Architecture:** Next.js App Router client components under `/vendor/*`, isolated from the `(storefront)` route group. Auth guard in `layout.tsx` enforces vendor status routing. All API calls via existing `apiFetch` utility with cookie JWT. One small backend addition (single-product GET endpoint + expanded variant fields) is required for the edit form.
+**Architecture:** Next.js App Router client components under `/vendor/*`, isolated from the `(storefront)` route group. Auth guard in `layout.tsx` enforces vendor status routing. All API calls via existing `apiFetch` utility with cookie JWT. Backend additions: single-product GET, expanded variant fields, R2 presigned-URL upload service + image CRUD endpoints, vendor fields in Meilisearch.
 
-**Tech Stack:** Next.js 14 App Router, TypeScript strict, Tailwind CSS, `apiFetch` from `@/lib/api`, `useAuth` from `@/hooks/use-auth`, `useVendor` from `@/hooks/use-vendor`, `formatPaise` from `@sario/ui`, NestJS + Prisma (backend task only).
+**Tech Stack:** Next.js 14 App Router, TypeScript strict, Tailwind CSS, `apiFetch` from `@/lib/api`, `useAuth` from `@/hooks/use-auth`, `useVendor` from `@/hooks/use-vendor`, `formatPaise` from `@sario/ui`, NestJS + Prisma + `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` (backend tasks).
 
 ---
 
@@ -29,9 +29,15 @@
 - `apps/web/src/app/vendor/returns/page.tsx` — return requests
 - `apps/web/src/app/vendor/profile/page.tsx` — store profile
 
+**Create (backend):**
+- `apps/api/src/upload/upload.service.ts` — R2 `S3Client` wrapper, presigned PUT URL generation, object delete
+- `apps/api/src/upload/upload.module.ts` — exports `UploadService`
+- `apps/api/src/catalog/product-image.controller.ts` — presign, save, delete, set-primary image routes
+
 **Modify (backend):**
-- `apps/api/src/catalog/product.service.ts` — add `getForVendor(vendorId, productId)`, expand `listForVendor` variant select, add vendor fields to `approveAndIndex`
+- `apps/api/src/catalog/product.service.ts` — add `getForVendor`, expand `listForVendor` variant select, add vendor fields to `approveAndIndex`
 - `apps/api/src/catalog/product.controller.ts` — add `GET /:id` route
+- `apps/api/src/catalog/catalog.module.ts` — import `UploadModule`
 
 **Modify (frontend storefront):**
 - `apps/web/src/app/(storefront)/search/page.tsx` — add `vendorName`/`vendorSlug` to `SearchHit`, render "Sold by" on cards
@@ -2438,7 +2444,560 @@ git commit -m "feat(vendor): store profile page with editable info and read-only
 
 ---
 
-## Task 13: Frontend vendor attribution on storefront cards
+## Task 13: Backend — R2 upload service + product image endpoints
+
+**Files:**
+- Create: `apps/api/src/upload/upload.service.ts`
+- Create: `apps/api/src/upload/upload.module.ts`
+- Create: `apps/api/src/catalog/product-image.controller.ts`
+- Modify: `apps/api/src/catalog/catalog.module.ts`
+
+- [ ] **Step 1: Install AWS SDK packages**
+
+```bash
+pnpm --filter @sario/api add @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+```
+
+Expected: packages added to `apps/api/package.json` and `pnpm-lock.yaml` updated.
+
+- [ ] **Step 2: Create `upload.service.ts`**
+
+```typescript
+// apps/api/src/upload/upload.service.ts
+import { Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+type AllowedType = (typeof ALLOWED_TYPES)[number];
+
+@Injectable()
+export class UploadService {
+  private readonly client: S3Client;
+  private readonly bucket: string;
+  private readonly publicUrl: string;
+
+  constructor(private readonly config: ConfigService) {
+    const accountId = config.getOrThrow<string>("R2_ACCOUNT_ID");
+    this.bucket = config.getOrThrow<string>("R2_BUCKET_NAME");
+    this.publicUrl = config.getOrThrow<string>("R2_PUBLIC_URL");
+
+    this.client = new S3Client({
+      region: "auto",
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: config.getOrThrow<string>("R2_ACCESS_KEY_ID"),
+        secretAccessKey: config.getOrThrow<string>("R2_SECRET_ACCESS_KEY"),
+      },
+    });
+  }
+
+  isAllowedType(contentType: string): contentType is AllowedType {
+    return (ALLOWED_TYPES as readonly string[]).includes(contentType);
+  }
+
+  async presign(key: string, contentType: AllowedType): Promise<{ presignedUrl: string; publicUrl: string }> {
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ContentType: contentType,
+    });
+    const presignedUrl = await getSignedUrl(this.client, command, { expiresIn: 300 });
+    const url = `${this.publicUrl}/${key}`;
+    return { presignedUrl, publicUrl: url };
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+
+  keyFromUrl(publicUrl: string): string {
+    return publicUrl.replace(`${this.publicUrl}/`, "");
+  }
+}
+```
+
+- [ ] **Step 3: Create `upload.module.ts`**
+
+```typescript
+// apps/api/src/upload/upload.module.ts
+import { Module } from "@nestjs/common";
+import { UploadService } from "./upload.service.js";
+
+@Module({
+  providers: [UploadService],
+  exports: [UploadService],
+})
+export class UploadModule {}
+```
+
+- [ ] **Step 4: Create `product-image.controller.ts`**
+
+```typescript
+// apps/api/src/catalog/product-image.controller.ts
+import {
+  Controller, Post, Delete, Patch, Body, Param, UseGuards, BadRequestException,
+} from "@nestjs/common";
+import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
+import { IsString, IsBoolean, IsOptional, IsInt } from "class-validator";
+import { PrismaService } from "../prisma/prisma.service.js";
+import { UploadService } from "../upload/upload.service.js";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { CurrentUser, type CurrentUserPayload } from "../auth/decorators/current-user.decorator.js";
+import { ProductService } from "./product.service.js";
+
+class PresignDto {
+  @IsString() filename: string;
+  @IsString() contentType: string;
+}
+
+class SaveImageDto {
+  @IsString() url: string;
+  @IsString() @IsOptional() altText?: string;
+  @IsBoolean() @IsOptional() isPrimary?: boolean;
+  @IsInt() @IsOptional() sortOrder?: number;
+}
+
+@ApiTags("Product Images (Vendor)")
+@Controller({ path: "vendors/me/products/:productId/images", version: "1" })
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
+export class ProductImageController {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly upload: UploadService,
+    private readonly products: ProductService,
+  ) {}
+
+  @Post("presign")
+  @ApiOperation({ summary: "Get a presigned PUT URL for R2 image upload" })
+  async presign(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param("productId") productId: string,
+    @Body() dto: PresignDto,
+  ) {
+    // Verify ownership
+    await this.products.getForVendor(user.id, productId);
+
+    if (!this.upload.isAllowedType(dto.contentType)) {
+      throw new BadRequestException("Only jpeg, png, and webp images are allowed.");
+    }
+
+    const ext = dto.filename.split(".").pop() ?? "jpg";
+    const key = `products/${productId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { presignedUrl, publicUrl } = await this.upload.presign(key, dto.contentType);
+    return { presignedUrl, publicUrl, key };
+  }
+
+  @Post()
+  @ApiOperation({ summary: "Save a ProductImage record after upload" })
+  async save(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param("productId") productId: string,
+    @Body() dto: SaveImageDto,
+  ) {
+    await this.products.getForVendor(user.id, productId);
+
+    if (dto.isPrimary) {
+      await this.prisma.productImage.updateMany({
+        where: { productId },
+        data: { isPrimary: false },
+      });
+    }
+
+    return this.prisma.productImage.create({
+      data: {
+        productId,
+        url: dto.url,
+        altText: dto.altText,
+        isPrimary: dto.isPrimary ?? false,
+        sortOrder: dto.sortOrder ?? 0,
+      },
+    });
+  }
+
+  @Delete(":imageId")
+  @ApiOperation({ summary: "Delete a product image record and R2 object" })
+  async remove(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param("productId") productId: string,
+    @Param("imageId") imageId: string,
+  ) {
+    await this.products.getForVendor(user.id, productId);
+
+    const image = await this.prisma.productImage.findUnique({ where: { id: imageId } });
+    if (!image || image.productId !== productId) return { deleted: false };
+
+    await this.upload.deleteObject(this.upload.keyFromUrl(image.url)).catch(() => null);
+    await this.prisma.productImage.delete({ where: { id: imageId } });
+    return { deleted: true };
+  }
+
+  @Patch(":imageId/primary")
+  @ApiOperation({ summary: "Set an image as primary" })
+  async setPrimary(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param("productId") productId: string,
+    @Param("imageId") imageId: string,
+  ) {
+    await this.products.getForVendor(user.id, productId);
+
+    await this.prisma.productImage.updateMany({
+      where: { productId },
+      data: { isPrimary: false },
+    });
+    return this.prisma.productImage.update({
+      where: { id: imageId },
+      data: { isPrimary: true },
+    });
+  }
+}
+```
+
+- [ ] **Step 5: Register in `catalog.module.ts`**
+
+Open `apps/api/src/catalog/catalog.module.ts`. Add `UploadModule` to imports and `ProductImageController` to controllers:
+
+```typescript
+import { UploadModule } from "../upload/upload.module.js";
+import { ProductImageController } from "./product-image.controller.js";
+// add ProductImageController to controllers array
+// add UploadModule to imports array
+```
+
+- [ ] **Step 6: Typecheck the API**
+
+```bash
+pnpm --filter @sario/api typecheck
+```
+
+Expected: no errors.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/api/src/upload/ apps/api/src/catalog/product-image.controller.ts apps/api/src/catalog/catalog.module.ts
+git commit -m "feat(api): R2 upload service + product image presign/save/delete/primary endpoints"
+```
+
+---
+
+## Task 14: Frontend — image upload in ProductForm
+
+**Files:**
+- Modify: `apps/web/src/app/vendor/_components/product-form.tsx`
+
+This task adds an Images section to the existing `ProductForm` component from Task 6.
+
+- [ ] **Step 1: Add image types to the top of `product-form.tsx`**
+
+After the existing imports, add:
+
+```typescript
+interface ProductImage {
+  id: string;
+  url: string;
+  altText?: string | null;
+  isPrimary: boolean;
+  sortOrder: number;
+}
+
+interface PendingUpload {
+  file: File;
+  previewUrl: string; // object URL for preview
+  uploading: boolean;
+  error: string;
+}
+```
+
+- [ ] **Step 2: Add image state to `ProductForm`**
+
+Inside the `ProductForm` function, after the existing `useState` calls, add:
+
+```typescript
+const [images, setImages] = useState<ProductImage[]>([]);
+const [pending, setPending] = useState<PendingUpload[]>([]);
+```
+
+- [ ] **Step 3: Load existing images in edit mode**
+
+In the `useEffect` that depends on `initialValues`, add image loading after form population. At the end of the `useEffect` where `initialValues` is applied, if `productId` is present, fetch the existing images:
+
+```typescript
+useEffect(() => {
+  if (initialValues) setForm((prev) => ({ ...prev, ...initialValues }));
+}, [initialValues]);
+
+useEffect(() => {
+  if (!productId) return;
+  apiFetch<{ images: ProductImage[] }>(`/vendors/me/products/${productId}`)
+    .then((p) => setImages(p.images ?? []))
+    .catch(() => null);
+}, [productId]);
+```
+
+Note: `getForVendor` now returns `images` in its include. Verify this is returned in the API response; if not, use `apiFetch<{ images: ProductImage[] }>`.
+
+- [ ] **Step 4: Add the `uploadFile` function**
+
+Inside `ProductForm`, below the `validate` function, add:
+
+```typescript
+const uploadFile = async (file: File, index: number): Promise<void> => {
+  setPending((prev) =>
+    prev.map((p, i) => (i === index ? { ...p, uploading: true, error: "" } : p))
+  );
+  try {
+    const { presignedUrl, publicUrl } = await apiFetch<{ presignedUrl: string; publicUrl: string; key: string }>(
+      `/vendors/me/products/${productId ?? "__new__"}/images/presign`,
+      {
+        method: "POST",
+        body: JSON.stringify({ filename: file.name, contentType: file.type }),
+      }
+    );
+
+    await fetch(presignedUrl, {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
+
+    const saved = await apiFetch<ProductImage>(`/vendors/me/products/${productId ?? "__new__"}/images`, {
+      method: "POST",
+      body: JSON.stringify({ url: publicUrl, isPrimary: images.length === 0 }),
+    });
+
+    setImages((prev) => [...prev, saved]);
+    setPending((prev) => prev.filter((_, i) => i !== index));
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Upload failed.";
+    setPending((prev) =>
+      prev.map((p, i) => (i === index ? { ...p, uploading: false, error: msg } : p))
+    );
+  }
+};
+```
+
+**Note:** For the create flow, `productId` is undefined at upload time. Upload happens after product creation. The `handleSubmit` function must be updated (Step 6) to create the product first, then upload.
+
+- [ ] **Step 5: Add file selection handler**
+
+```typescript
+const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const files = Array.from(e.target.files ?? []);
+  const totalAfter = images.length + pending.length + files.length;
+  if (totalAfter > 5) {
+    setError("Maximum 5 images per product.");
+    return;
+  }
+  const newPending = files.map((file) => ({
+    file,
+    previewUrl: URL.createObjectURL(file),
+    uploading: false,
+    error: "",
+  }));
+  setPending((prev) => [...prev, ...newPending]);
+  // reset input so same file can be re-selected after error
+  e.target.value = "";
+};
+```
+
+- [ ] **Step 6: Update `handleSubmit` to upload pending images after product creation**
+
+Replace the submit logic for the create case so it uploads images after creating the product:
+
+```typescript
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  const err = validate();
+  if (err) { setError(err); return; }
+  setLoading(true);
+  setError("");
+  setSuccess("");
+
+  const payload = {
+    name: form.name,
+    description: form.description,
+    categoryId: form.categoryId,
+    ...(form.fabric && { fabric: form.fabric }),
+    ...(form.region && { region: form.region }),
+    ...(form.weaverStory && { weaverStory: form.weaverStory }),
+    ...(form.giTag && { giTag: form.giTag }),
+    ...(form.hsnCode && { hsnCode: form.hsnCode }),
+    ...(form.occasion && { occasion: form.occasion.split(",").map((s) => s.trim()).filter(Boolean) }),
+    ...(form.tags && { tags: form.tags.split(",").map((s) => s.trim()).filter(Boolean) }),
+    variants: form.variants.map((v) => ({
+      name: v.name,
+      sku: v.sku,
+      ...(v.color && { color: v.color }),
+      pricePaise: Math.round(parseFloat(v.priceRupees) * 100),
+      mrpPaise: Math.round(parseFloat(v.mrpRupees) * 100),
+      ...(v.weightGrams && { weightGrams: parseInt(v.weightGrams) }),
+      ...(v.quantity && { quantity: parseInt(v.quantity) }),
+    })),
+  };
+
+  try {
+    if (productId) {
+      // Edit: save product fields, then upload any pending images
+      await apiFetch(`/vendors/me/products/${productId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      await Promise.all(pending.map((_, i) => uploadFile(pending[i]!.file, i)));
+      setSuccess("Product updated successfully.");
+    } else {
+      // Create: create product first, then upload images
+      const created = await apiFetch<{ id: string }>("/vendors/me/products", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      // Upload each pending image sequentially to avoid race on isPrimary
+      for (let i = 0; i < pending.length; i++) {
+        const { presignedUrl, publicUrl } = await apiFetch<{ presignedUrl: string; publicUrl: string; key: string }>(
+          `/vendors/me/products/${created.id}/images/presign`,
+          { method: "POST", body: JSON.stringify({ filename: pending[i]!.file.name, contentType: pending[i]!.file.type }) }
+        );
+        await fetch(presignedUrl, { method: "PUT", headers: { "Content-Type": pending[i]!.file.type }, body: pending[i]!.file });
+        await apiFetch(`/vendors/me/products/${created.id}/images`, {
+          method: "POST",
+          body: JSON.stringify({ url: publicUrl, isPrimary: i === 0 }),
+        });
+      }
+      router.push("/vendor/products");
+    }
+  } catch (e: unknown) {
+    setError(e instanceof Error ? e.message : "Failed to save product.");
+  } finally {
+    setLoading(false);
+  }
+};
+```
+
+- [ ] **Step 7: Add image delete and set-primary handlers**
+
+```typescript
+const deleteImage = async (image: ProductImage) => {
+  if (!productId) return;
+  try {
+    await apiFetch(`/vendors/me/products/${productId}/images/${image.id}`, { method: "DELETE" });
+    setImages((prev) => prev.filter((img) => img.id !== image.id));
+  } catch { /* silent */ }
+};
+
+const setPrimaryImage = async (image: ProductImage) => {
+  if (!productId) return;
+  try {
+    await apiFetch(`/vendors/me/products/${productId}/images/${image.id}/primary`, { method: "PATCH" });
+    setImages((prev) => prev.map((img) => ({ ...img, isPrimary: img.id === image.id })));
+  } catch { /* silent */ }
+};
+```
+
+- [ ] **Step 8: Add Images section JSX to the form**
+
+In the form JSX, after the Variants section `</div>` and before the error/success messages, add:
+
+```tsx
+<div className="rounded-xl border border-[#F0F0F0] bg-white p-6 shadow-sm space-y-4">
+  <div className="flex items-center justify-between">
+    <div>
+      <h2 className="text-sm font-extrabold uppercase tracking-wider text-[#1A1A1A]">Images</h2>
+      <p className="text-xs text-[#696969] mt-0.5">Up to 5 images. First image is shown as primary.</p>
+    </div>
+    {(images.length + pending.length) < 5 && (
+      <label className="cursor-pointer rounded-xl border border-primary px-4 py-2 text-xs font-bold text-primary hover:bg-primary/5 transition-colors">
+        + Upload
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          multiple
+          className="hidden"
+          onChange={handleFileSelect}
+        />
+      </label>
+    )}
+  </div>
+
+  {(images.length > 0 || pending.length > 0) ? (
+    <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+      {images.map((img) => (
+        <div
+          key={img.id}
+          className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-colors ${
+            img.isPrimary ? "border-primary" : "border-[#E8E8E8]"
+          }`}
+        >
+          <img src={img.url} alt={img.altText ?? "Product image"} className="h-full w-full object-cover" />
+          {img.isPrimary && (
+            <span className="absolute top-1 left-1 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-white">
+              Primary
+            </span>
+          )}
+          <div className="absolute inset-0 flex flex-col items-center justify-end gap-1 bg-black/0 hover:bg-black/30 transition-colors p-1">
+            {!img.isPrimary && productId && (
+              <button
+                type="button"
+                onClick={() => { void setPrimaryImage(img); }}
+                className="w-full rounded-lg bg-white/90 py-0.5 text-[9px] font-bold text-[#1A1A1A] hover:bg-white opacity-0 group-hover:opacity-100"
+              >
+                Set Primary
+              </button>
+            )}
+            {productId && (
+              <button
+                type="button"
+                onClick={() => { void deleteImage(img); }}
+                className="w-full rounded-lg bg-red-600/90 py-0.5 text-[9px] font-bold text-white hover:bg-red-600"
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {pending.map((p, i) => (
+        <div key={i} className="relative aspect-square rounded-xl overflow-hidden border-2 border-dashed border-[#E8E8E8]">
+          <img src={p.previewUrl} alt="Uploading…" className="h-full w-full object-cover opacity-60" />
+          {p.uploading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/60">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          )}
+          {p.error && (
+            <div className="absolute inset-0 flex items-center justify-center bg-red-50/80 p-1">
+              <p className="text-[9px] text-red-600 text-center font-bold">{p.error}</p>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  ) : (
+    <div className="rounded-xl border border-dashed border-[#E8E8E8] py-10 text-center text-sm text-[#9B9B9B]">
+      No images yet. Click Upload to add product photos.
+    </div>
+  )}
+</div>
+```
+
+- [ ] **Step 9: Typecheck**
+
+```bash
+pnpm --filter @sario/web typecheck
+```
+
+Expected: no errors.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add apps/web/src/app/vendor/_components/product-form.tsx
+git commit -m "feat(vendor): product image upload with R2 presigned URLs in product form"
+```
+
+---
+
+## Task 16: Frontend vendor attribution on storefront cards
 
 **Files:**
 - Modify: `apps/web/src/app/(storefront)/search/page.tsx`
@@ -2550,7 +3109,7 @@ git commit -m "feat(storefront): show vendor name on product cards in search and
 
 ---
 
-## Task 14: Final typecheck + smoke test
+## Task 17: Final typecheck + smoke test
 
 - [ ] **Step 1: Full typecheck both apps**
 

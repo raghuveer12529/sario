@@ -248,7 +248,50 @@ Save button → inline success/error message below form.
 - Skeleton loading states for data-heavy pages (not full-page spinners)
 - No new backend endpoints required — frontend only
 
-## Section 8: Vendor Attribution on Storefront Cards
+## Section 8: Product Image Upload
+
+Vendors must be able to upload product images during create and edit. Images are stored in Cloudflare R2 (S3-compatible). The upload flow uses **presigned PUT URLs** so image bytes never pass through the API server.
+
+### Backend
+
+**Install:** `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` in `apps/api`.
+
+**New files:**
+- `apps/api/src/upload/upload.service.ts` — wraps `S3Client`, generates presigned PUT URLs and deletes objects
+- `apps/api/src/upload/upload.module.ts` — exports `UploadService`
+- `apps/api/src/catalog/product-image.controller.ts` — image CRUD routes, registered in `CatalogModule`
+
+**Env vars (already in `.env.example`):** `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`
+
+**API endpoints:**
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/v1/vendors/me/products/:id/images/presign` | Return presigned PUT URL + public URL |
+| POST | `/v1/vendors/me/products/:id/images` | Save `ProductImage` record after upload |
+| DELETE | `/v1/vendors/me/products/:id/images/:imageId` | Delete record + R2 object |
+| PATCH | `/v1/vendors/me/products/:id/images/:imageId/primary` | Set image as primary (unsets others) |
+
+**Presign request body:** `{ filename: string; contentType: string }` — returns `{ presignedUrl: string; publicUrl: string; key: string }`.
+
+**Key format:** `products/{productId}/{timestamp}-{filename}`. Content-type restricted to `image/jpeg`, `image/png`, `image/webp`. Max size enforced client-side (5 MB).
+
+### Frontend
+
+The product form gains an **Images** section below Variants:
+
+- "Upload Images" file input (hidden), triggered by a styled button. Accepts `image/jpeg,image/png,image/webp`, multiple, max 5 total.
+- On file selection: immediately upload each file — call presign → `PUT` to R2 → call save endpoint → add to image list.
+- Show grid of uploaded image thumbnails with:
+  - Delete button (calls DELETE endpoint, removes from list)
+  - "Set Primary" badge / button (calls PATCH primary endpoint)
+  - Primary image marked with a gold border + "Primary" chip
+- Upload progress indicator per file (simple spinner on the thumbnail slot).
+- Edit mode: pre-load existing images from the product fetch.
+
+---
+
+## Section 9: Vendor Attribution on Storefront Cards
 
 Product cards on the home page and search results do not currently show which vendor sells each product. Adding "Sold by [name]" links these surfaces to the vendor store page and makes the multi-vendor nature of the platform visible to buyers.
 
@@ -300,7 +343,6 @@ Note: existing products already in the Meilisearch index will not have `vendorNa
 
 ## Out of Scope
 
-- Product image upload (UI placeholder only — no upload endpoint exists yet)
 - Vendor analytics or revenue charts beyond the 3 dashboard stat cards
 - Buyer messaging or chat
 - Re-indexing existing Meilisearch documents (vendor attribution only applies to newly approved products until a separate migration runs)
