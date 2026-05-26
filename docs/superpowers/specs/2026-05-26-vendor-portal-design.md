@@ -1,16 +1,15 @@
 # Vendor Portal UI — Design Spec
 
 **Date:** 2026-05-26  
-**Status:** Approved  
-**Approach:** A — Integrated route group in `apps/web`, sidebar + mobile bottom nav
+**Status:** Approved
 
 ---
 
 ## Overview
 
-The vendor portal lives at `/vendor/*` inside the existing `apps/web` Next.js app as a separate route group alongside `(storefront)`. It gives saree vendors a complete self-serve interface: onboarding, product management, order fulfillment, return handling, and store profile editing.
+The vendor portal lives at `/vendor/*` inside the existing `apps/web` Next.js app. It is a separate route group alongside `(storefront)` and does **not** inherit the buyer header or category nav. It gives saree vendors a complete self-serve interface: onboarding, product management, order fulfillment, return handling, and store profile editing.
 
-All data fetches use the existing `apiFetch` utility with cookie-based JWT auth. Money values are stored as paise and displayed via `formatPaise` from `@sario/ui`. Product images use URL inputs (no upload endpoint yet).
+All data fetches use the existing `apiFetch` utility with cookie-based JWT auth. Money values are stored as paise and displayed via `formatPaise` from `@sario/ui`. No new backend endpoints are required — all API routes already exist.
 
 ---
 
@@ -49,153 +48,208 @@ apps/web/src/app/vendor/_components/
 
 ## Section 1: Layout & Auth Guard
 
-`vendor/layout.tsx` is a `"use client"` component. It reads `useAuth` + `useVendor` and enforces:
+`vendor/layout.tsx` is a `"use client"` component. It reads `useAuth` + `useVendor` + `usePathname` and enforces:
 
 | State | Action |
 |---|---|
-| `loading` | Full-screen centered spinner |
+| `auth.loading` or `vendor.loading` | Full-screen centered spinner |
 | Not authenticated | Redirect `/auth?next=/vendor` |
-| `vendor === null` or status `DRAFT` | Redirect `/vendor/onboarding` |
+| `vendor === null` or status `DRAFT`, and not on `/vendor/onboarding` | Redirect `/vendor/onboarding` |
 | status `PENDING` | Full-page "Under Review" screen (no nav) |
 | status `SUSPENDED` | Full-page "Suspended" screen (no nav) |
 | status `APPROVED` | Render sidebar shell + `{children}` |
 
 **Shell layout:**
-- Desktop: fixed 240px left sidebar. Shows Sario logo, vendor `businessName`, status badge, nav links, logout at bottom.
+- Desktop: fixed 240px left sidebar. Shows "Sario Vendor" logo, vendor `businessName` chip, status badge, nav links, logout button at bottom.
 - Mobile: full-width content area + fixed bottom tab bar (5 tabs: Dashboard, Products, Orders, Returns, Profile).
-- Active nav item uses brand primary color highlight.
+- Active nav item: `bg-primary/10 text-primary font-bold rounded-lg`. Inactive: `text-[#4D4D4D] hover:bg-[#F5F5F5] rounded-lg`.
+- Main content: `bg-[#F5F5F5] min-h-screen p-6`.
+
+**Under Review screen:** Centered card with icon, "Application Under Review" heading, message that the Sario team is reviewing the application and will notify via email.
+
+**Suspended screen:** Centered card with icon, "Account Suspended" heading, message to contact support. Logout button shown.
 
 ---
 
 ## Section 2: Onboarding Wizard
 
-Single page at `/vendor/onboarding`. 3-step stepper, all state in `useState`. Single `POST /v1/vendors/apply` on final submit.
+Single page at `/vendor/onboarding`. The layout guard allows access even when vendor is null/DRAFT (pathname check). All step state held in `useState`. Single `POST /v1/vendors/apply` call on final submit with all collected fields.
+
+Step indicator: 3 numbered circles with connector lines, active step highlighted in primary color.
 
 **Step 1 — Business Info**
-- Business Name (required)
-- GSTIN (optional)
-- PAN (optional)
-- About (textarea, optional)
-- Return Policy (textarea, optional)
+- Business Name (required, maps to `businessName`)
+- About (optional, textarea, max 2000 chars, maps to `about`)
+- Return Policy (optional, textarea, max 1000 chars, maps to `returnPolicy`)
 
-**Step 2 — KYC**
-- Read-only info card: "KYC verification is handled by the Sario team after approval."
-- No fields. Single "Continue" button.
+**Step 2 — KYC Details**
+- GSTIN (optional, text, placeholder `33AABCU9603R1ZV`, hint: "15-character GST Identification Number")
+- PAN (optional, text, placeholder `ABCDE1234F`, hint: "10-character Permanent Account Number")
+- Both are optional — vendor can leave blank and proceed
 
-**Step 3 — Bank Details**
-- Account Holder Name (required)
-- Account Number (required)
-- Confirm Account Number (required, must match)
-- IFSC Code (required)
-- Bank Name (required)
-- Submit → `POST /v1/vendors/apply` with all collected data
-- On success → redirect to "Application Submitted" screen (same as PENDING state in layout)
+**Step 3 — Bank Account**
+- Account Holder Name (required, maps to `accountHolder`)
+- Bank Name (required, maps to `bankName`)
+- Account Number (required, maps to `accountNumber`, pattern `\d{9,18}`)
+- Confirm Account Number (required, client-side match validation only, not sent to API)
+- IFSC Code (required, maps to `ifsc`, placeholder `SBIN0001234`)
+- Submit → `POST /v1/vendors/apply` with all fields from steps 1–3
+- On success → redirect to `/vendor` (guard shows "Under Review" since status becomes PENDING)
+- On API error → inline error message below submit button
 
-Stepper shows step number + label at top. "Back" button on steps 2 and 3. Client-side validation with inline error messages before submit.
+"Back" button on steps 2 and 3 restores previous step without data loss. Step 1 has no Back.
 
 ---
 
 ## Section 3: Dashboard
 
-Calls `GET /v1/vendors/me/stats` (new endpoint). Skeleton cards while loading.
+Fetches in parallel on mount:
+- `GET /v1/vendors/me/products` → derive total product count and pending-review count
+- `GET /v1/vendors/me/orders?limit=5` → derive pending-action count and return-pending count; also used for Recent Orders table
 
-**KPI cards (top row, 2×2 on mobile, 4-across on desktop):**
-- Total Approved Products
-- Pending Orders
-- Orders This Month
-- Revenue This Month (₹)
+**3 stat cards (row):**
 
-**Below cards:**
-- Recent Orders: last 5 orders — order ID (short), buyer city, amount, status badge, date
-- Quick actions: "+ Add Product" → `/vendor/products/new`, "View All Orders" → `/vendor/orders`
+| Card | Derived from |
+|---|---|
+| Total Products | `products` response total count |
+| Orders to Process | orders with status `CONFIRMED` or `PACKED` |
+| Pending Returns | orders with status `RETURN_REQUESTED` |
+
+Stat card skeleton: `animate-pulse h-24 rounded-xl bg-[#F0F0F0]` while loading.
+
+**Recent Orders table:** Last 5 orders — short order ID (last 8 chars uppercased), date, status badge, amount via `formatPaise`. Link "View All →" to `/vendor/orders`.
+
+**Quick actions:** "Add New Product" → `/vendor/products/new`, "View All Orders" → `/vendor/orders`.
 
 ---
 
 ## Section 4: Products
 
 **List** (`/vendor/products`)
-- Tab filters: All | Draft | Pending Review | Approved | Rejected
-- Debounced search input (300ms, `GET /vendors/me/products?search=...&status=...`)
-- 20 per page with prev/next pagination
-- Row: thumbnail (URL or placeholder icon), name, fabric + region tags, variant count, price range, status badge, Edit + Delete
-- Delete: inline confirmation text below the row (no modal)
-- Rejected: shows `rejectionReason` in red callout on the row
+- Tab filters: All · Pending Review · Approved · Rejected (maps to `ProductStatus` enum values)
+- Debounced search input (400ms, `GET /v1/vendors/me/products?search=...&status=...`)
+- 20 per page with prev/next pagination controls
+- Product cards in responsive grid (1 col mobile, 2 col sm, 3 col lg):
+  - Name, status badge, category name, variant count, price range (min `pricePaise` formatted via `formatPaise`)
+  - Edit button → `/vendor/products/[id]/edit`
+  - Delete button → inline confirm ("Delete product?" + Confirm/Cancel) — no modal
+  - Rejected products: `rejectionReason` shown in red callout below the card name
+- Empty state: icon + "No products yet. Add your first saree." + "Add Product" button
+- Skeleton: 6 placeholder cards while loading
 
-**Create/Edit form** (shared `<ProductForm>`)
-- Edit pre-populates from the product list or via direct API fetch
-- Fields: Name, Description, Category (dropdown from `GET /v1/catalog/categories`), Fabric, Region, Occasion (multi-select chips), Tags (comma-separated input), GI Tag, HSN Code, Weaver Story, Image URLs (up to 5 URL text inputs)
-- Variant Editor: dynamic rows — Name, SKU, Color, Price (₹), MRP (₹), Weight (g), Stock Qty. "Add Variant" appends a row. Minimum 1 variant enforced.
-- Price inputs: accept ₹ rupees in UI, multiply by 100 before sending to API
-- Submit: `POST /v1/vendors/me/products` (create) or `PATCH /v1/vendors/me/products/:id` (edit)
-- Success: redirect to `/vendor/products` with inline success message
+**Create Product** (`/vendor/products/new`)
+
+Fetches `GET /v1/catalog/categories` for the category dropdown on mount.
+
+Fields (maps directly to `CreateProductDto`):
+- Name (required)
+- Description (required, textarea)
+- Category (required, select from categories API)
+- Fabric (optional)
+- Region (optional)
+- Occasion (optional, comma-separated input → split to `string[]` on submit)
+- Tags (optional, comma-separated input → split to `string[]` on submit)
+- Weaver Story (optional, textarea, maps to `weaverStory`)
+- GI Tag (optional, maps to `giTag`)
+- HSN Code (optional, maps to `hsnCode`)
+
+Variants section (`<VariantEditor>`): dynamic rows, minimum 1. "Add Variant" appends a row.
+- Per row: Name (required), SKU (required), Color (optional), Price in ₹ (required, × 100 → `pricePaise`), MRP in ₹ (required, × 100 → `mrpPaise`), Weight g (optional → `weightGrams`), Stock Qty (optional → `quantity`)
+- Delete row button disabled when only 1 row remains
+
+Submit → `POST /v1/vendors/me/products` → on success redirect to `/vendor/products` with success flash.
+
+**Edit Product** (`/vendor/products/[id]/edit`)
+
+Fetches `GET /v1/vendors/me/products` then finds by `id` to pre-populate form. Submit → `PATCH /v1/vendors/me/products/:id`. Same field layout as create. Prices pre-populated as ₹ (divide stored paise by 100 for display).
 
 ---
 
 ## Section 5: Orders
 
 **List** (`/vendor/orders`)
-- Tab filters: All | Confirmed | Packed | Shipped | Delivered
-- Expandable cards:
-  - Collapsed: short order ID, date, item count, total ₹, status badge
-  - Expanded: item list (name + variant + qty + price from product snapshot), buyer city, tracking number if available
+- Tab filters: All · Confirmed · Packed · Shipped · Delivered
+- `GET /v1/vendors/me/orders?status=...&page=1&limit=20`
+- Expandable cards (click header row to toggle):
+  - Collapsed: short order ID, date, item count, total (formatPaise), status badge
+  - Expanded: list of items (name, variant, qty, unit price); tracking number if available
 - Action buttons by status:
-  - `CONFIRMED` → "Mark Packed" (`POST /vendors/me/orders/:id/advance`)
-  - `PACKED` → "Mark Shipped" (`POST /vendors/me/orders/:id/ship`)
-  - `SHIPPED` / `DELIVERED` → read-only
-- Status badge colors: yellow=Confirmed, blue=Packed, orange=Shipped, green=Delivered (consistent with Flipkart/Meesho seller conventions)
+  - `CONFIRMED` → "Mark Packed" (`POST /v1/vendors/me/orders/:id/advance`)
+  - `PACKED` → "Mark Shipped" (`POST /v1/vendors/me/orders/:id/ship`)
+  - `SHIPPED` / `DELIVERED` → read-only, no action button
+- After action: refetch the list
+- Status badge color pairs: CONFIRMED=yellow, PACKED=purple, SHIPPED=indigo, DELIVERED=green (matches buyer orders page pattern)
 
 ---
 
 ## Section 6: Returns
 
 **List** (`/vendor/returns`)
-- Fetches `GET /vendors/me/orders?status=RETURN_REQUESTED` (no separate returns endpoint — reuses the orders list filtered by status). Also shows `RETURN_APPROVED` and `RETURN_REJECTED` in a "History" tab.
-- Cards showing: order ID, product name, buyer reason, date, status
-- `PENDING` cards: "Approve" (green) + "Reject" (red) buttons
-- Reject: inline reason input + confirm button — no modal
-- `POST /vendors/me/orders/:id/return/approve` or `/reject`
-- Approved/Rejected: shows outcome + timestamp, no actions
+- Tab 1 "Pending": `GET /v1/vendors/me/orders?status=RETURN_REQUESTED`
+- Tab 2 "History": `GET /v1/vendors/me/orders?status=RETURN_APPROVED` + `GET /v1/vendors/me/orders?status=RETURN_REJECTED` merged
+- Cards: order ID, date, amount, order status badge
+- Pending cards: "Approve" button + "Reject" button
+  - Approve: `POST /v1/vendors/me/orders/:id/return/approve` → remove card from list
+  - Reject: opens inline reason input below the card → submit `POST /v1/vendors/me/orders/:id/return/reject` with `{ reason }` → remove card from list
+- History cards: read-only with outcome badge
+- Empty state: "No pending return requests."
 
 ---
 
 ## Section 7: Profile
 
-**`/vendor/profile`**
-- Editable: Business Name, About, Return Policy, Banner URL
-- Read-only: GSTIN, PAN, Bank Account (number masked `••••1234`, bank name, verified badge)
-- Save: `PATCH /v1/vendors/me`
-- Inline success/error message after save
+**`/vendor/profile`** — uses `useVendor` for initial data.
+
+Editable section → `PATCH /v1/vendors/me`:
+- Business Name (maps to `businessName`)
+- About (textarea, maps to `about`)
+- Return Policy (textarea, maps to `returnPolicy`)
+
+Read-only section — KYC:
+- GSTIN (grayed input or plain text, from `vendor.gstin`)
+- PAN (grayed input, from `vendor.pan`)
+
+Read-only section — Bank Account (from `vendor.bankAccounts[0]`):
+- Bank Name
+- Account number masked as `••••` + last 4 digits (frontend masking only)
+- Verified badge: green "Verified" if `isVerified`, else gray "Pending Verification"
+
+Save button → inline success/error message below form.
 
 ---
 
-## Section 8: API — Stats Endpoint
+## API Reference
 
-**`vendor.service.ts`** — add `getStats(userId: string)`:
-1. Resolve vendorId from userId via Prisma
-2. Check Redis key `vendor:stats:{vendorId}` — return cached if hit
-3. Run in `Promise.all`:
-   - Count products where `vendorId` + `status = APPROVED` + `deletedAt null`
-   - Count orders where `vendorId` + `status IN [CONFIRMED, PACKED, SHIPPED]`
-   - Count + sum orders where `vendorId` + `createdAt >= start of current month`
-4. Cache result 60s in Redis
-5. Return `{ approvedProducts, pendingOrders, ordersThisMonth, revenueThisMonthPaise }`
-
-**`vendor.controller.ts`** — add:
-```
-@Get("me/stats")
-@ApiOperation({ summary: "Vendor dashboard stats (cached 60s)" })
-getStats(@CurrentUser() user: CurrentUserPayload) {
-  return this.vendorService.getStats(user.id);
-}
-```
+| Action | Method | Endpoint |
+|---|---|---|
+| Get vendor profile | GET | `/v1/vendors/me` |
+| Apply as vendor | POST | `/v1/vendors/apply` |
+| Update vendor profile | PATCH | `/v1/vendors/me` |
+| List own products | GET | `/v1/vendors/me/products` |
+| Create product | POST | `/v1/vendors/me/products` |
+| Update product | PATCH | `/v1/vendors/me/products/:id` |
+| Delete product | DELETE | `/v1/vendors/me/products/:id` |
+| List own orders | GET | `/v1/vendors/me/orders` |
+| Advance order status | POST | `/v1/vendors/me/orders/:id/advance` |
+| Create Shiprocket shipment | POST | `/v1/vendors/me/orders/:id/ship` |
+| Approve return | POST | `/v1/vendors/me/orders/:id/return/approve` |
+| Reject return | POST | `/v1/vendors/me/orders/:id/return/reject` |
+| List categories | GET | `/v1/catalog/categories` |
 
 ---
 
 ## Key Constraints
 
 - No `any` — TypeScript strict throughout
-- Money always stored/transmitted as integer paise; `formatPaise()` for display
-- `apiFetch` for all API calls (handles credentials + Content-Type + error throwing)
-- No external UI libraries beyond what's already in the stack (shadcn/ui, Tailwind)
-- Mobile-first — bottom tab nav on mobile, sidebar on desktop
-- Skeleton loading states (not spinners) for data-heavy pages — better perceived performance on Indian mobile networks
+- Money always stored/transmitted as integer paise; `formatPaise()` from `@sario/ui` for display
+- `apiFetch` from `@/lib/api` for all API calls (attaches `credentials: "include"` + Content-Type)
+- No external UI libraries beyond existing stack (Tailwind, shadcn/ui tokens)
+- Mobile-first — bottom tab nav on mobile, sidebar on desktop (`lg:` breakpoint)
+- Skeleton loading states for data-heavy pages (not full-page spinners)
+- No new backend endpoints required — frontend only
+
+## Out of Scope
+
+- Product image upload (UI placeholder only — no upload endpoint exists yet)
+- Vendor analytics or revenue charts beyond the 3 dashboard stat cards
+- Buyer messaging or chat
