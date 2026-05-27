@@ -198,17 +198,19 @@ async function main() {
     prisma.user.upsert({ where: { phone: "+917654321098" }, update: {}, create: { phone: "+917654321098", name: "Sita Krishnan", email: "sita@example.com", isVerified: true, trustScore: 65 } }),
   ]);
 
-  // ── Vendor owner accounts (login via OTP; OTP appears in API console in dev) ─
+  // ── Vendor owner accounts — Dev password: Vendor@sario1 ─────────────────────
+  // Login at /auth/vendor/login with these email + password credentials
+  const vendorPwHash = "$2b$10$CwU8bYy3aZTtCePd.RLJCOnP/ghzwVSu/vlS158c8lVONAnwliQz6";
   const [vendorUser1, vendorUser2] = await Promise.all([
     prisma.user.upsert({
-      where: { phone: "+919000000001" },
-      update: {},
-      create: { phone: "+919000000001", name: "Roop Kashish Owner", isVerified: true },
+      where: { email: "vendor1@sario.dev" },
+      update: { passwordHash: vendorPwHash, isVerified: true },
+      create: { email: "vendor1@sario.dev", phone: "+919000000001", name: "Roop Kashish Owner", passwordHash: vendorPwHash, isVerified: true },
     }),
     prisma.user.upsert({
-      where: { phone: "+919000000002" },
-      update: {},
-      create: { phone: "+919000000002", name: "Chanderi Craft Owner", isVerified: true },
+      where: { email: "vendor2@sario.dev" },
+      update: { passwordHash: vendorPwHash, isVerified: true },
+      create: { email: "vendor2@sario.dev", phone: "+919000000002", name: "Chanderi Craft Studio Owner", passwordHash: vendorPwHash, isVerified: true },
     }),
   ]);
 
@@ -1191,9 +1193,13 @@ async function main() {
 ║    password: Admin@sario1                            ║
 ╠══════════════════════════════════════════════════════╣
 ║  VENDOR 1 — Roop Kashish Textiles (APPROVED)         ║
-║    phone: +919000000001  (OTP in API console)        ║
+║    email:    vendor1@sario.dev                       ║
+║    password: Vendor@sario1                           ║
+║    portal:   http://localhost:3000/vendor            ║
 ║  VENDOR 2 — Chanderi Craft Studio (APPROVED)         ║
-║    phone: +919000000002  (OTP in API console)        ║
+║    email:    vendor2@sario.dev                       ║
+║    password: Vendor@sario1                           ║
+║    portal:   http://localhost:3000/vendor            ║
 ╠══════════════════════════════════════════════════════╣
 ║  CUSTOMERS (apps/web → http://localhost:3000)        ║
 ║    +919876543210  Priya Sharma   (OTP in API console)║
