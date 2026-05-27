@@ -24,6 +24,8 @@ interface Product {
   slug: string;
   images: Array<{ url: string; altText?: string }>;
   variants: Array<{ pricePaise: number; mrpPaise: number }>;
+  vendorName?: string;
+  vendorSlug?: string;
 }
 
 async function getFeatured(): Promise<Product[]> {
@@ -36,13 +38,15 @@ async function getFeatured(): Promise<Product[]> {
 
 async function getNewArrivals(): Promise<Product[]> {
   try {
-    const res = await apiFetch<{ hits: Array<{ id: string; name: string; slug: string; primaryImageUrl?: string; minPricePaise: number; mrpPaise?: number }> }>("/catalog/search?q=&sort=newest&limit=10", { cache: "no-store" });
+    const res = await apiFetch<{ hits: Array<{ id: string; name: string; slug: string; primaryImageUrl?: string; minPricePaise: number; mrpPaise?: number; vendorName?: string; vendorSlug?: string }> }>("/catalog/search?q=&sort=newest&limit=10", { cache: "no-store" });
     return res.hits.map((h) => ({
       id: h.id,
       name: h.name,
       slug: h.slug,
       images: h.primaryImageUrl ? [{ url: h.primaryImageUrl }] : [],
       variants: [{ pricePaise: h.minPricePaise, mrpPaise: h.mrpPaise ?? h.minPricePaise }],
+      ...(h.vendorName ? { vendorName: h.vendorName } : {}),
+      ...(h.vendorSlug ? { vendorSlug: h.vendorSlug } : {}),
     }));
   } catch {
     return [];
@@ -432,6 +436,15 @@ function ProductGrid({ products }: { products: Product[] }) {
             </div>
             <div className="p-2.5">
               <p className="line-clamp-2 text-sm font-semibold text-[#1A1A1A] leading-snug">{p.name}</p>
+              {p.vendorName && p.vendorSlug && (
+                <Link
+                  href={`/weavers/${p.vendorSlug}` as Route}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-[10px] text-[#9B9B9B] hover:text-primary transition-colors truncate block"
+                >
+                  {p.vendorName}
+                </Link>
+              )}
               {p.variants[0] && (
                 <div className="mt-1.5 flex flex-wrap items-baseline gap-1">
                   <span className="text-base font-bold text-[#1A1A1A]">

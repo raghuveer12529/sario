@@ -16,6 +16,8 @@ interface SearchHit {
   minPricePaise: number;
   mrpPaise?: number;
   primaryImageUrl?: string;
+  vendorName?: string;
+  vendorSlug?: string;
 }
 
 interface SearchResult {
@@ -144,6 +146,15 @@ export default async function SearchPage({
                       </div>
                       <div className="p-2.5">
                         <p className="line-clamp-2 text-xs font-medium text-[#1A1A1A] leading-tight">{hit.name}</p>
+                        {hit.vendorName && hit.vendorSlug && (
+                          <Link
+                            href={`/weavers/${hit.vendorSlug}` as Route}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-[10px] text-[#9B9B9B] hover:text-primary transition-colors truncate block"
+                          >
+                            {hit.vendorName}
+                          </Link>
+                        )}
                         {hit.region && (
                           <p className="mt-0.5 text-xs text-[#9B9B9B]">{hit.region}</p>
                         )}
