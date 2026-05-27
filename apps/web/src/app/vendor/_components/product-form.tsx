@@ -5,6 +5,21 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { VariantEditor, type VariantRow, EMPTY_VARIANT } from "./variant-editor";
 
+interface ProductImage {
+  id: string;
+  url: string;
+  altText?: string | null;
+  isPrimary: boolean;
+  sortOrder: number;
+}
+
+interface PendingUpload {
+  file: File;
+  previewUrl: string;
+  uploading: boolean;
+  error: string;
+}
+
 interface Category {
   id: string;
   name: string;
@@ -79,6 +94,8 @@ export function ProductForm({ initialValues, productId }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [images, setImages] = useState<ProductImage[]>([]);
+  const [pending, setPending] = useState<PendingUpload[]>([]);
 
   useEffect(() => {
     apiFetch<Category[]>("/catalog/categories")
@@ -89,6 +106,13 @@ export function ProductForm({ initialValues, productId }: Props) {
   useEffect(() => {
     if (initialValues) setForm((prev) => ({ ...prev, ...initialValues }));
   }, [initialValues]);
+
+  useEffect(() => {
+    if (!productId) return;
+    apiFetch<{ images: ProductImage[] }>(`/vendors/me/products/${productId}`)
+      .then((p) => setImages(p.images ?? []))
+      .catch(() => null);
+  }, [productId]);
 
   const set = (field: keyof ProductFormValues) => (value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -106,6 +130,64 @@ export function ProductForm({ initialValues, productId }: Props) {
       if (!v.mrpRupees || isNaN(mrp) || mrp <= 0) return "Each variant must have a valid MRP.";
     }
     return "";
+  };
+
+  const uploadFile = async (file: File, createdProductId: string, isPrimary: boolean): Promise<ProductImage | null> => {
+    try {
+      const { presignedUrl, publicUrl } = await apiFetch<{ presignedUrl: string; publicUrl: string; key: string }>(
+        `/vendors/me/products/${createdProductId}/images/presign`,
+        {
+          method: "POST",
+          body: JSON.stringify({ filename: file.name, contentType: file.type }),
+        }
+      );
+
+      await fetch(presignedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+
+      return await apiFetch<ProductImage>(`/vendors/me/products/${createdProductId}/images`, {
+        method: "POST",
+        body: JSON.stringify({ url: publicUrl, isPrimary }),
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    const totalAfter = images.length + pending.length + files.length;
+    if (totalAfter > 5) {
+      setError("Maximum 5 images per product.");
+      return;
+    }
+    const newPending: PendingUpload[] = files.map((file) => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      uploading: false,
+      error: "",
+    }));
+    setPending((prev) => [...prev, ...newPending]);
+    e.target.value = "";
+  };
+
+  const deleteImage = async (image: ProductImage) => {
+    if (!productId) return;
+    try {
+      await apiFetch(`/vendors/me/products/${productId}/images/${image.id}`, { method: "DELETE" });
+      setImages((prev) => prev.filter((img) => img.id !== image.id));
+    } catch { /* silent */ }
+  };
+
+  const setPrimaryImage = async (image: ProductImage) => {
+    if (!productId) return;
+    try {
+      await apiFetch(`/vendors/me/products/${productId}/images/${image.id}/primary`, { method: "PATCH" });
+      setImages((prev) => prev.map((img) => ({ ...img, isPrimary: img.id === image.id })));
+    } catch { /* silent */ }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -141,9 +223,22 @@ export function ProductForm({ initialValues, productId }: Props) {
     try {
       if (productId) {
         await apiFetch(`/vendors/me/products/${productId}`, { method: "PATCH", body: JSON.stringify(payload) });
+        // upload any pending images for edit
+        for (let i = 0; i < pending.length; i++) {
+          const isPrimary = images.length === 0 && i === 0;
+          const saved = await uploadFile(pending[i]!.file, productId, isPrimary);
+          if (saved) setImages((prev) => [...prev, saved]);
+        }
+        setPending([]);
         setSuccess("Product updated successfully.");
       } else {
-        await apiFetch("/vendors/me/products", { method: "POST", body: JSON.stringify(payload) });
+        const created = await apiFetch<{ id: string }>("/vendors/me/products", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        for (let i = 0; i < pending.length; i++) {
+          await uploadFile(pending[i]!.file, created.id, i === 0);
+        }
         router.push("/vendor/products");
       }
     } catch (e: unknown) {
@@ -223,6 +318,87 @@ export function ProductForm({ initialValues, productId }: Props) {
           variants={form.variants}
           onChange={(variants) => setForm((prev) => ({ ...prev, variants }))}
         />
+      </div>
+
+      <div className="rounded-xl border border-[#F0F0F0] bg-white p-6 shadow-sm space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-extrabold uppercase tracking-wider text-[#1A1A1A]">Images</h2>
+            <p className="text-xs text-[#696969] mt-0.5">Up to 5 images. First uploaded is primary.</p>
+          </div>
+          {(images.length + pending.length) < 5 && (
+            <label className="cursor-pointer rounded-xl border border-primary px-4 py-2 text-xs font-bold text-primary hover:bg-primary/5 transition-colors">
+              + Upload
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+            </label>
+          )}
+        </div>
+
+        {(images.length > 0 || pending.length > 0) ? (
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+            {images.map((img) => (
+              <div
+                key={img.id}
+                className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-colors ${
+                  img.isPrimary ? "border-primary" : "border-[#E8E8E8]"
+                }`}
+              >
+                <img src={img.url} alt={img.altText ?? "Product image"} className="h-full w-full object-cover" />
+                {img.isPrimary && (
+                  <span className="absolute top-1 left-1 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold text-white">
+                    Primary
+                  </span>
+                )}
+                <div className="absolute bottom-0 left-0 right-0 flex flex-col gap-1 bg-black/30 p-1 opacity-0 hover:opacity-100 transition-opacity">
+                  {!img.isPrimary && productId && (
+                    <button
+                      type="button"
+                      onClick={() => { void setPrimaryImage(img); }}
+                      className="w-full rounded-md bg-white/90 py-0.5 text-[9px] font-bold text-[#1A1A1A]"
+                    >
+                      Set Primary
+                    </button>
+                  )}
+                  {productId && (
+                    <button
+                      type="button"
+                      onClick={() => { void deleteImage(img); }}
+                      className="w-full rounded-md bg-red-600/90 py-0.5 text-[9px] font-bold text-white"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {pending.map((p, i) => (
+              <div key={i} className="relative aspect-square rounded-xl overflow-hidden border-2 border-dashed border-[#E8E8E8]">
+                <img src={p.previewUrl} alt="Pending upload" className="h-full w-full object-cover opacity-60" />
+                {p.uploading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/60">
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  </div>
+                )}
+                {p.error && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-red-50/80 p-1">
+                    <p className="text-[9px] text-red-600 text-center font-bold">{p.error}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-[#E8E8E8] py-10 text-center text-sm text-[#9B9B9B]">
+            No images yet. Click Upload to add product photos.
+          </div>
+        )}
       </div>
 
       {error && (
