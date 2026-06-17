@@ -171,11 +171,13 @@ function VariantSelector({ variants }: { variants: ProductVariant[] }) {
   );
 }
 
+const DRAFT_STATUS_STYLE = { bg: "bg-gray-100", text: "text-gray-800", label: "Draft" };
+
 const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> = {
   PENDING_REVIEW: { bg: "bg-amber-100", text: "text-amber-800", label: "Pending Review" },
   APPROVED:       { bg: "bg-green-100", text: "text-green-800", label: "Approved" },
   REJECTED:       { bg: "bg-red-100",   text: "text-red-800",   label: "Rejected" },
-  DRAFT:          { bg: "bg-gray-100",  text: "text-gray-800",  label: "Draft" },
+  DRAFT:          DRAFT_STATUS_STYLE,
 };
 
 export default function AdminProductPreviewPage({ params }: { params: { id: string } }) {
@@ -239,7 +241,7 @@ export default function AdminProductPreviewPage({ params }: { params: { id: stri
     );
   }
 
-  const statusStyle = STATUS_STYLE[product.status] ?? STATUS_STYLE["DRAFT"]!;
+  const statusStyle = STATUS_STYLE[product.status] ?? DRAFT_STATUS_STYLE;
   const totalStock = product.variants.reduce(
     (s, v) => s + v.inventory.quantity - v.inventory.reservedQuantity,
     0

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { adminFetch } from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { RejectDialog } from "@/components/reject-dialog";
 import { VendorDetailDrawer } from "@/components/vendor-detail";
@@ -46,7 +47,7 @@ export default function VendorsPage() {
     setError(null);
     adminFetch<Vendor[]>(`/admin/vendors?status=${status}`)
       .then(setVendors)
-      .catch((err) => setError(err.message || "Failed to fetch vendors. Please check your connection."))
+      .catch((err: unknown) => setError(getErrorMessage(err, "Failed to fetch vendors. Please check your connection.")))
       .finally(() => setLoading(false));
   }, [status]);
 
@@ -62,8 +63,8 @@ export default function VendorsPage() {
         ...(reason ? { body: JSON.stringify({ reason }) } : {}),
       });
       setVendors((v) => v.filter((x) => x.id !== id));
-    } catch (err: any) {
-      alert(err.message || `Failed to ${act} vendor.`);
+    } catch (err: unknown) {
+      alert(getErrorMessage(err, `Failed to ${act} vendor.`));
     } finally {
       setSubmittingId(null);
     }

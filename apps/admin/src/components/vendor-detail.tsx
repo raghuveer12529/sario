@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { adminFetch } from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
 
 interface VendorDetail {
   id: string;
@@ -33,7 +34,7 @@ export function VendorDetailDrawer({ id, onClose }: { id: string; onClose: () =>
     setLoading(true);
     adminFetch<VendorDetail>(`/admin/vendors/${id}`)
       .then(setVendor)
-      .catch((err) => setError(err.message || "Failed to load vendor details."))
+      .catch((err: unknown) => setError(getErrorMessage(err, "Failed to load vendor details.")))
       .finally(() => setLoading(false));
   }, [id]);
 

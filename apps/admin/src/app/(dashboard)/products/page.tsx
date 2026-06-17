@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { adminFetch } from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
 import { PRODUCT_STATUS } from "@sario/shared";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { RejectDialog } from "@/components/reject-dialog";
@@ -45,7 +46,7 @@ export default function AdminProductsPage() {
     setError(null);
     adminFetch<Product[]>(`/admin/products?status=${status}`)
       .then(setProducts)
-      .catch((err) => setError(err.message || "Could not load products."))
+      .catch((err: unknown) => setError(getErrorMessage(err, "Could not load products.")))
       .finally(() => setLoading(false));
   }, [status]);
 
@@ -58,8 +59,8 @@ export default function AdminProductsPage() {
     try {
       await adminFetch(`/admin/products/${id}/approve`, { method: "POST" });
       setProducts((p) => p.filter((x) => x.id !== id));
-    } catch (err: any) {
-      alert(err.message || "Approval failed.");
+    } catch (err: unknown) {
+      alert(getErrorMessage(err, "Approval failed."));
     } finally {
       setSubmittingId(null);
     }
@@ -73,8 +74,8 @@ export default function AdminProductsPage() {
         body: JSON.stringify({ reason }),
       });
       setProducts((p) => p.filter((x) => x.id !== id));
-    } catch (err: any) {
-      alert(err.message || "Rejection failed.");
+    } catch (err: unknown) {
+      alert(getErrorMessage(err, "Rejection failed."));
     } finally {
       setSubmittingId(null);
     }

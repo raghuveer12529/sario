@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { adminFetch } from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { RejectDialog } from "@/components/reject-dialog";
 import { formatPaise } from "@sario/ui";
@@ -47,7 +48,7 @@ export default function AdminReturnsPage() {
     setError(null);
     adminFetch<{ data: ReturnRequest[] }>(`/admin/returns?status=${status}`)
       .then((r) => setReturns(r.data ?? []))
-      .catch((err) => setError(err.message || "Could not load return requests."))
+      .catch((err: unknown) => setError(getErrorMessage(err, "Could not load return requests.")))
       .finally(() => setLoading(false));
   }, [status]);
 
@@ -60,8 +61,8 @@ export default function AdminReturnsPage() {
     try {
       await adminFetch(`/admin/returns/${id}/approve`, { method: "POST" });
       setReturns((r) => r.filter((x) => x.id !== id));
-    } catch (err: any) {
-      alert(err.message || "Approval failed.");
+    } catch (err: unknown) {
+      alert(getErrorMessage(err, "Approval failed."));
     } finally {
       setSubmittingId(null);
     }
@@ -75,8 +76,8 @@ export default function AdminReturnsPage() {
         body: JSON.stringify({ reason }),
       });
       setReturns((r) => r.filter((x) => x.id !== id));
-    } catch (err: any) {
-      alert(err.message || "Rejection failed.");
+    } catch (err: unknown) {
+      alert(getErrorMessage(err, "Rejection failed."));
     } finally {
       setSubmittingId(null);
     }
@@ -87,8 +88,8 @@ export default function AdminReturnsPage() {
     try {
       await adminFetch(`/admin/returns/${id}/refund`, { method: "POST" });
       setReturns((r) => r.filter((x) => x.id !== id));
-    } catch (err: any) {
-      alert(err.message || "Refund failed.");
+    } catch (err: unknown) {
+      alert(getErrorMessage(err, "Refund failed."));
     } finally {
       setSubmittingId(null);
     }

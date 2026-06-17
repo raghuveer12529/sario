@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { adminFetch } from "@/lib/api";
+import { getErrorMessage } from "@/lib/error";
 import { formatPaise } from "@sario/ui";
 
 type OrderStatus =
@@ -61,7 +62,7 @@ export default function AdminOrdersPage() {
     setError(null);
     adminFetch<{ data: Order[] }>(`/admin/orders?status=${status}`)
       .then((r) => setOrders(r.data ?? []))
-      .catch((err) => setError(err.message || "Could not load orders."))
+      .catch((err: unknown) => setError(getErrorMessage(err, "Could not load orders.")))
       .finally(() => setLoading(false));
   }, [status]);
 
