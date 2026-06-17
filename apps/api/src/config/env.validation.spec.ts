@@ -31,4 +31,12 @@ describe("validateEnv", () => {
     const { RAZORPAY_KEY_ID, ...noRzp } = base;
     expect(() => validateEnv({ ...noRzp, NODE_ENV: "development" })).not.toThrow();
   });
+  it("rejects placeholder secrets even when NODE_ENV is test", () => {
+    expect(() => validateEnv({ ...base, NODE_ENV: "test", COOKIE_SECRET: "change_me_cookie_secret_min_32_chars" }))
+      .toThrow(/COOKIE_SECRET/);
+  });
+  it("rejects a missing JWT_SECRET", () => {
+    const { JWT_SECRET, ...noJwt } = base;
+    expect(() => validateEnv(noJwt)).toThrow(/JWT_SECRET/);
+  });
 });

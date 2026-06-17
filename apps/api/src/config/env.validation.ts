@@ -1,9 +1,10 @@
 import * as Joi from "joi";
 
 const PLACEHOLDERS = [
-  "change_me_in_production_min_32_chars",
-  "change_me_too_in_production_min_32",
-  "sario-cookie-secret",
+  "change_me_in_production_min_32_chars",      // JWT_SECRET example
+  "change_me_too_in_production_min_32",        // JWT_REFRESH_SECRET example
+  "change_me_cookie_secret_min_32_chars",      // COOKIE_SECRET example
+  "sario-cookie-secret",                       // legacy hardcoded fallback
 ];
 
 const secret = Joi.string()
