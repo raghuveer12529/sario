@@ -24,7 +24,7 @@ async function bootstrap() {
   // Cookies (must be registered before any route handler reads req.cookies)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   await app.register(require("@fastify/cookie") as never, {
-    secret: process.env["COOKIE_SECRET"] ?? "sario-cookie-secret",
+    secret: process.env["COOKIE_SECRET"],
   });
 
   // Security

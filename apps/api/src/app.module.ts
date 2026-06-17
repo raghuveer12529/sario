@@ -20,10 +20,11 @@ import { NotificationModule } from "./notification/notification.module.js";
 import { AdminModule } from "./admin/admin.module.js";
 import { AdminProductController } from "./catalog/admin-product.controller.js";
 import { QueueModule } from "./queue/queue.module.js";
+import { validateEnv } from "./config/env.validation.js";
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     TerminusModule,
