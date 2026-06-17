@@ -86,6 +86,7 @@ export class RazorpayService {
       this.logger.warn(`[MOCK] Linked account for ${input.businessName}`);
       return { id: `mock_acc_${Date.now()}` };
     }
+    // TODO(payouts): real Razorpay Route onboarding needs full KYC/product-config payload before transfers succeed in production
     return this.request<{ id: string }>("POST", "/accounts", {
       email: input.email,
       type: "route",

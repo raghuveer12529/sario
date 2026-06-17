@@ -126,6 +126,43 @@ describe("PayoutService", () => {
     );
   });
 
+  it("iterates the group, transferring per-order amounts for each distinct vendor", async () => {
+    mockPrisma.vendor.findUnique.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve({
+          id: where.id,
+          commissionBps: 1500,
+          razorpayAccountId: where.id === "ven_1" ? "acc_1" : "acc_2",
+        }),
+    );
+    mockRazorpay.createTransfer.mockResolvedValue({ id: "trf_x" });
+
+    await service.createPayoutsForGroup(
+      "pay_rz",
+      [
+        order({ id: "ord_1", vendorId: "ven_1", totalPaise: 100000 }),
+        order({ id: "ord_2", vendorId: "ven_2", totalPaise: 200000 }),
+      ],
+      "pmt_1",
+    );
+
+    expect(mockRazorpay.createTransfer).toHaveBeenCalledTimes(2);
+    expect(mockRazorpay.createTransfer).toHaveBeenCalledWith("pay_rz", "acc_1", 85000);
+    expect(mockRazorpay.createTransfer).toHaveBeenCalledWith("pay_rz", "acc_2", 170000);
+
+    expect(mockPrisma.payout.create).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.payout.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ orderId: "ord_1", vendorId: "ven_1", netPaise: 85000 }) as unknown,
+      }),
+    );
+    expect(mockPrisma.payout.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ orderId: "ord_2", vendorId: "ven_2", netPaise: 170000 }) as unknown,
+      }),
+    );
+  });
+
   it("records FAILED and does not throw when the transfer call fails", async () => {
     mockPrisma.vendor.findUnique.mockResolvedValue({
       id: "ven_1",

@@ -286,13 +286,19 @@ export class CheckoutService {
     }
 
     // Split the captured payment to each vendor's Route account, retaining commission.
-    // Per-order failures are recorded as FAILED payouts internally and never thrown,
-    // so this must not break order confirmation for the buyer.
-    await this.payouts.createPayoutsForGroup(
-      razorpayPaymentId,
-      groupOrders.map((o) => ({ id: o.id, vendorId: o.vendorId, totalPaise: o.totalPaise })),
-      payment.id,
-    );
+    // Payouts must never block the buyer's confirmation. Per-order failures are already
+    // recorded as FAILED inside PayoutService; this guards against unexpected errors
+    // (e.g. a DB hiccup) so clearCart still runs and the error is observable/reconcilable.
+    try {
+      await this.payouts.createPayoutsForGroup(
+        razorpayPaymentId,
+        groupOrders.map((o) => ({ id: o.id, vendorId: o.vendorId, totalPaise: o.totalPaise })),
+        payment.id,
+      );
+    } catch (err) {
+      this.logger.error(`Payout creation failed for ${razorpayOrderId}`, err);
+      captureException(err, { razorpayOrderId });
+    }
 
     // Clear cart
     await this.cartService.clearCart({ userId: anchorOrder.userId });

@@ -235,5 +235,30 @@ describe("CheckoutService", () => {
       });
       expect(mockCart.clearCart).toHaveBeenCalledWith({ userId: "usr_1" });
     });
+
+    it("still clears the cart and does not throw when payout creation fails unexpectedly", async () => {
+      mockPrisma.payment.findUnique.mockResolvedValue({
+        id: "pay_1",
+        orderId: "ord_a",
+        status: PaymentStatus.CREATED,
+      });
+      mockPrisma.payment.update.mockResolvedValue({});
+      mockPrisma.order.findUnique.mockResolvedValue({
+        id: "ord_a",
+        userId: "usr_1",
+        checkoutGroupId: "idem-123",
+      });
+      mockPrisma.order.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.order.findMany.mockResolvedValue([
+        { id: "ord_a", vendorId: "ven_1", totalPaise: 200000, items: [{ variantId: "var_1", quantity: 2 }] },
+      ]);
+      mockPrisma.inventory.update.mockResolvedValue({});
+      mockPayouts.createPayoutsForGroup.mockRejectedValueOnce(new Error("db hiccup"));
+
+      await expect(service.confirmPayment("rz_order_1", "rz_pay_1")).resolves.toBeUndefined();
+
+      expect(mockPayouts.createPayoutsForGroup).toHaveBeenCalled();
+      expect(mockCart.clearCart).toHaveBeenCalledWith({ userId: "usr_1" });
+    });
   });
 });
