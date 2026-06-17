@@ -12,7 +12,10 @@ module.exports = {
     project: true,
   },
   rules: {
-    "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      { argsIgnorePattern: "^_", varsIgnorePattern: "^_", ignoreRestSiblings: true },
+    ],
     "@typescript-eslint/consistent-type-imports": [
       "error",
       { prefer: "type-imports" },

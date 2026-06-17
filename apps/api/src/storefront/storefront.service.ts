@@ -20,8 +20,8 @@ export class StorefrontService {
   }
 
   private serializeForCache(value: unknown): string {
-    return JSON.stringify(value, (_key, val) =>
-      typeof val === "bigint" ? val.toString() : val
+    return JSON.stringify(value, (_key, val: unknown) =>
+      typeof val === "bigint" ? val.toString() : val,
     );
   }
 
@@ -46,7 +46,8 @@ export class StorefrontService {
     const visited = new Set<string>([categoryId]);
     const queue = [categoryId];
     while (queue.length) {
-      const current = queue.shift()!;
+      const current = queue.shift();
+      if (current === undefined) break;
       const children = all.filter((c) => c.parentId === current && c.isActive);
       for (const child of children) {
         if (visited.has(child.id)) continue;

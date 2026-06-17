@@ -42,10 +42,15 @@ const schema = Joi.object({
   ALLOWED_ORIGINS: Joi.string().optional(),
 }).unknown(true);
 
-export function validateEnv(config: Record<string, unknown>) {
-  const { error, value } = schema.validate(config, { abortEarly: false });
-  if (error) {
-    throw new Error(`Environment validation failed: ${error.message}`);
+export function validateEnv(
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const result: Joi.ValidationResult<Record<string, unknown>> = schema.validate(
+    config,
+    { abortEarly: false },
+  );
+  if (result.error) {
+    throw new Error(`Environment validation failed: ${result.error.message}`);
   }
-  return value;
+  return result.value;
 }

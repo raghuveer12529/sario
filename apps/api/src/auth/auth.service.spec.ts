@@ -1,5 +1,5 @@
 import { Test, type TestingModule } from "@nestjs/testing";
-import { BadRequestException, ForbiddenException, HttpException, UnauthorizedException } from "@nestjs/common";
+import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 // OTP_DISABLED

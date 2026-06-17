@@ -39,7 +39,7 @@ export class CartController {
     if (!anonymousId) {
       anonymousId = randomUUID();
       const isProd = process.env["NODE_ENV"] === "production";
-      res.setCookie(CART_COOKIE, anonymousId, {
+      void res.setCookie(CART_COOKIE, anonymousId, {
         httpOnly: true,
         secure: isProd,
         sameSite: isProd ? "none" : "lax",
@@ -99,7 +99,7 @@ export class CartController {
     if (!anonymousId) return this.cartService.getCart({ userId: user.id });
 
     const cart = await this.cartService.mergeAnonymousCart(anonymousId, user.id);
-    res.clearCookie(CART_COOKIE, { path: "/" });
+    void res.clearCookie(CART_COOKIE, { path: "/" });
     return cart;
   }
 }

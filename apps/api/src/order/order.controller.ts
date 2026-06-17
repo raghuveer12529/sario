@@ -9,7 +9,6 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
 import { CurrentUser, type CurrentUserPayload } from "../auth/decorators/current-user.decorator.js";
 
 class CancelOrderDto { @IsString() reason: string; }
-class ReturnOrderDto { @IsString() reason: string; }
 
 @ApiTags("Orders (Buyer)")
 @Controller({ path: "me/orders", version: "1" })

@@ -163,7 +163,10 @@ export class AuthService {
     return user;
   }
 
-  async updateMe(userId: string, data: any) {
+  async updateMe(
+    userId: string,
+    data: { name?: string; email?: string; avatarUrl?: string },
+  ) {
     if (data.email) {
       const clash = await this.prisma.user.findUnique({
         where: { email: data.email },
@@ -205,9 +208,9 @@ export class AuthService {
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) throw new UnauthorizedException("Invalid credentials.");
 
-    const tokens = await this.issueTokens(user.id, user.email!, "CUSTOMER");
-    const { passwordHash: _pw, ...safeUser } = user;
-    return { ...tokens, user: { ...safeUser, email: user.email! } };
+    const tokens = await this.issueTokens(user.id, email, "CUSTOMER");
+    const { passwordHash: _passwordHash, ...safeUser } = user;
+    return { ...tokens, user: { ...safeUser, email } };
   }
 
   async register(email: string, password: string): Promise<AuthResponse> {
@@ -233,8 +236,8 @@ export class AuthService {
           select: { id: true, email: true, phone: true, name: true, isVerified: true },
         });
 
-    const tokens = await this.issueTokens(user.id, user.email!, "CUSTOMER");
-    return { ...tokens, user: { ...user, email: user.email! } };
+    const tokens = await this.issueTokens(user.id, email, "CUSTOMER");
+    return { ...tokens, user: { ...user, email } };
   }
 
   async vendorLogin(
@@ -256,9 +259,9 @@ export class AuthService {
     });
     if (!vendor) throw new ForbiddenException("No vendor account found.");
 
-    const tokens = await this.issueTokens(user.id, user.email!, "VENDOR");
-    const { passwordHash: _pw, ...safeUser } = user;
-    return { ...tokens, user: { ...safeUser, email: user.email! }, vendor };
+    const tokens = await this.issueTokens(user.id, email, "VENDOR");
+    const { passwordHash: _passwordHash, ...safeUser } = user;
+    return { ...tokens, user: { ...safeUser, email }, vendor };
   }
 
   async adminLogin(email: string, password: string): Promise<{ accessToken: string; admin: { id: string; name: string; email: string; role: string } }> {

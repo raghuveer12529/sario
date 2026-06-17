@@ -23,7 +23,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       this.report(exception, { url: req.url });
     }
 
-    reply
+    // Fire-and-forget: filter signature is void; reply.send() resolves on its own.
+    void reply
       .status(status)
       .send(typeof body === "string" ? { statusCode: status, message: body } : { ...body, statusCode: status });
   }

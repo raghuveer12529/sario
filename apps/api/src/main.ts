@@ -7,13 +7,16 @@ import {
 import { ValidationPipe, VersioningType } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import helmet from "@fastify/helmet";
+import fastifyCookie from "@fastify/cookie";
 import { AppModule } from "./app.module.js";
 import { initSentry } from "./observability/sentry.js";
 import { AllExceptionsFilter } from "./observability/all-exceptions.filter.js";
 
 // BigInt fields (e.g. monthlyGmvPaise on Vendor) are not JSON-serializable by default.
 // Serialize as string to avoid precision loss on large paise values.
-(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function () {
+(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function (
+  this: bigint,
+): string {
   return this.toString();
 };
 
@@ -26,8 +29,7 @@ async function bootstrap() {
   );
 
   // Cookies (must be registered before any route handler reads req.cookies)
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  await app.register(require("@fastify/cookie") as never, {
+  await app.register(fastifyCookie as never, {
     secret: process.env["COOKIE_SECRET"],
   });
 
