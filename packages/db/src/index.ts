@@ -14,6 +14,7 @@ export {
   DiscountType,
   AdminRole,
   OtpPurpose,
+  PayoutStatus,
 } from "@prisma/client";
 
 // Re-export model types
@@ -33,6 +34,7 @@ export type {
   Order,
   OrderItem,
   Payment,
+  Payout,
   Shipment,
   Refund,
   Review,

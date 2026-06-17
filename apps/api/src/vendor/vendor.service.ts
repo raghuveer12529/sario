@@ -8,6 +8,7 @@ import {
 import { VendorStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { RedisService } from "../redis/redis.service.js";
+import { RazorpayService } from "../payment/razorpay.service.js";
 import { PennyDropService } from "./penny-drop.service.js";
 import type { ApplyVendorDto } from "./dto/apply-vendor.dto.js";
 import type { UpdateVendorDto } from "./dto/update-vendor.dto.js";
@@ -24,6 +25,7 @@ export class VendorService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly razorpay: RazorpayService,
     private readonly pennyDrop: PennyDropService,
   ) {}
 
@@ -79,6 +81,39 @@ export class VendorService {
       where: { id: vendorId },
       data: dto,
     });
+  }
+
+  /** Create a Razorpay Route linked account for the vendor and store its id for payouts. */
+  async linkRazorpayAccount(userId: string) {
+    const vendor = await this.prisma.vendor.findUnique({
+      where: { userId, deletedAt: null },
+      include: {
+        user: { select: { email: true, name: true } },
+        bankAccounts: { where: { isPrimary: true }, select: { accountHolder: true } },
+      },
+    });
+    if (!vendor) throw new NotFoundException("Vendor profile not found.");
+
+    if (vendor.razorpayAccountId) {
+      return { razorpayAccountId: vendor.razorpayAccountId };
+    }
+
+    const contactName =
+      vendor.bankAccounts[0]?.accountHolder ?? vendor.user?.name ?? vendor.businessName;
+    const email = vendor.user?.email ?? `vendor+${vendor.id}@sario.local`;
+
+    const account = await this.razorpay.createLinkedAccount({
+      email,
+      businessName: vendor.businessName,
+      contactName,
+    });
+
+    await this.prisma.vendor.update({
+      where: { id: vendor.id },
+      data: { razorpayAccountId: account.id },
+    });
+
+    return { razorpayAccountId: account.id };
   }
 
   // ─── Admin operations ──────────────────────────────────────────────────────

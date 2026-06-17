@@ -31,4 +31,10 @@ export class VendorController {
     // In prod, look up vendorId via user relationship; simplified here
     return this.vendorService.update(user.id, dto);
   }
+
+  @Post("me/razorpay-link")
+  @ApiOperation({ summary: "Create/link a Razorpay Route account for payouts" })
+  linkRazorpay(@CurrentUser() user: CurrentUserPayload) {
+    return this.vendorService.linkRazorpayAccount(user.id);
+  }
 }

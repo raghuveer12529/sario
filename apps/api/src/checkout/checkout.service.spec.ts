@@ -6,6 +6,7 @@ import { PrismaService } from "../prisma/prisma.service.js";
 import { CartService } from "../cart/cart.service.js";
 import { RazorpayService } from "../payment/razorpay.service.js";
 import { RedisService } from "../redis/redis.service.js";
+import { PayoutService } from "../payout/payout.service.js";
 
 interface MockTx {
   $executeRaw: jest.Mock;
@@ -46,6 +47,10 @@ const mockRazorpay = {
 
 const mockRedis = {
   set: jest.fn(),
+};
+
+const mockPayouts = {
+  createPayoutsForGroup: jest.fn(),
 };
 
 const fakeAddress = {
@@ -89,6 +94,7 @@ describe("CheckoutService", () => {
         { provide: CartService, useValue: mockCart },
         { provide: RazorpayService, useValue: mockRazorpay },
         { provide: RedisService, useValue: mockRedis },
+        { provide: PayoutService, useValue: mockPayouts },
       ],
     }).compile();
 

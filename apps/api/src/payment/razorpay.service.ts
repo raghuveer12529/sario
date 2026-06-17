@@ -54,6 +54,47 @@ export class RazorpayService {
     });
   }
 
+  /**
+   * Razorpay Route: split a captured payment to a linked account.
+   * Mock-aware — returns a fake transfer id when keys are absent.
+   */
+  async createTransfer(
+    paymentId: string,
+    accountId: string,
+    amountPaise: number,
+  ): Promise<{ id: string }> {
+    if (!this.keyId) {
+      this.logger.warn(`[MOCK] Transfer ${amountPaise} paise to ${accountId}`);
+      return { id: `mock_trf_${Date.now()}` };
+    }
+    return this.request<{ id: string }>("POST", `/payments/${paymentId}/transfers`, {
+      transfers: [{ account: accountId, amount: amountPaise, currency: "INR" }],
+    });
+  }
+
+  /**
+   * Razorpay Route: create a linked account shell for a vendor.
+   * Real onboarding requires a fuller KYC payload; this creates the account shell —
+   * see Razorpay Route docs for required fields.
+   */
+  async createLinkedAccount(input: {
+    email: string;
+    businessName: string;
+    contactName: string;
+  }): Promise<{ id: string }> {
+    if (!this.keyId) {
+      this.logger.warn(`[MOCK] Linked account for ${input.businessName}`);
+      return { id: `mock_acc_${Date.now()}` };
+    }
+    return this.request<{ id: string }>("POST", "/accounts", {
+      email: input.email,
+      type: "route",
+      legal_business_name: input.businessName,
+      business_type: "individual",
+      contact_name: input.contactName,
+    });
+  }
+
   async fetchPayment(paymentId: string) {
     if (!this.keyId) return { status: "captured", amount: 0 };
     return this.request<{ status: string; amount: number }>("GET", `/payments/${paymentId}`);

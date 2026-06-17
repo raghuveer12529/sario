@@ -12,6 +12,7 @@ import { PrismaService } from "../prisma/prisma.service.js";
 import { CartService } from "../cart/cart.service.js";
 import { RazorpayService } from "../payment/razorpay.service.js";
 import { RedisService } from "../redis/redis.service.js";
+import { PayoutService } from "../payout/payout.service.js";
 import { captureException } from "../observability/sentry.js";
 import { randomUUID } from "crypto";
 
@@ -30,6 +31,7 @@ export class CheckoutService {
     private readonly cartService: CartService,
     private readonly razorpay: RazorpayService,
     private readonly redis: RedisService,
+    private readonly payouts: PayoutService,
   ) {}
 
   async initiate(userId: string, dto: CheckoutInitDto) {
@@ -282,6 +284,15 @@ export class CheckoutService {
           return null;
         });
     }
+
+    // Split the captured payment to each vendor's Route account, retaining commission.
+    // Per-order failures are recorded as FAILED payouts internally and never thrown,
+    // so this must not break order confirmation for the buyer.
+    await this.payouts.createPayoutsForGroup(
+      razorpayPaymentId,
+      groupOrders.map((o) => ({ id: o.id, vendorId: o.vendorId, totalPaise: o.totalPaise })),
+      payment.id,
+    );
 
     // Clear cart
     await this.cartService.clearCart({ userId: anchorOrder.userId });
