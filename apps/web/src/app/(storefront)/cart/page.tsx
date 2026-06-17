@@ -52,8 +52,7 @@ export default function CartPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!isAuthenticated) { setLoading(false); return; }
-    
+    // Works for guests too — the API issues/uses an anonymous cart cookie.
     void apiFetch<Cart>("/cart")
       .then(setCart)
       .catch((err) => setError(err.message || "Could not load cart. Please refresh."))
@@ -90,27 +89,6 @@ export default function CartPage() {
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="h-32 animate-pulse rounded-2xl border border-[#F0F0F0] bg-white" />
           ))}
-        </div>
-      </main>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <main className="bg-[#F5F5F5] min-h-screen flex items-center justify-center px-4 py-16">
-        <div className="w-full max-w-sm rounded-2xl border border-[#F0F0F0] bg-white p-8 text-center shadow-sm">
-          <CartIcon />
-          <h1 className="mt-4 text-xl font-bold text-[#1A1A1A]">Your cart is waiting</h1>
-          <p className="mt-2 text-sm text-[#696969]">Sign in to see the items you've added and complete your purchase.</p>
-          <Link
-            href="/auth"
-            className="mt-8 block rounded-xl bg-primary py-3.5 text-sm font-bold text-white shadow-lg shadow-primary/20 hover:opacity-90 transition-all"
-          >
-            Sign In to Cart
-          </Link>
-          <Link href="/" className="mt-4 block text-sm font-bold text-primary hover:underline">
-            Continue Shopping
-          </Link>
         </div>
       </main>
     );
@@ -153,7 +131,7 @@ export default function CartPage() {
         </div>
 
         {error && (
-          <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-in slide-in-from-top-2">
+          <div role="alert" aria-live="assertive" className="mb-6 flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 animate-in slide-in-from-top-2">
             <svg className="h-5 w-5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
             </svg>

@@ -14,6 +14,8 @@ interface SearchableProduct {
   vendorName: string;
   vendorSlug: string;
   minPricePaise: number;
+  mrpPaise?: number;
+  searchIndexedAt?: number;
   primaryImageUrl?: string;
   occasion: string[];
 }
@@ -63,7 +65,7 @@ export class MeilisearchService implements OnModuleInit {
       await this.request("PATCH", `/indexes/${this.index}/settings`, {
         searchableAttributes: ["name", "description", "fabric", "region", "tags", "occasion"],
         filterableAttributes: ["categoryId", "vendorId", "region", "fabric", "minPricePaise", "occasion"],
-        sortableAttributes: ["minPricePaise"],
+        sortableAttributes: ["minPricePaise", "searchIndexedAt"],
         typoTolerance: { enabled: true, minWordSizeForTypos: { oneTypo: 4, twoTypos: 8 } },
         synonyms: {
           saree: ["saari", "sari", "seere", "cheera"],

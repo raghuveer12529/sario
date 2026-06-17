@@ -8,6 +8,9 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:3000",
     screenshot: "only-on-failure",
+    launchOptions: {
+      slowMo: process.env.SLOW_MO ? parseInt(process.env.SLOW_MO) : 0,
+    },
   },
   projects: [
     {

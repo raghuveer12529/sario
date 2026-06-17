@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { adminFetch } from "@/lib/api";
 import { PRODUCT_STATUS } from "@sario/shared";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -30,6 +31,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export default function AdminProductsPage() {
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [status, setStatus] = useState("PENDING_REVIEW");
   const [loading, setLoading] = useState(true);
@@ -170,13 +172,27 @@ export default function AdminProductsPage() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {products.map((p) => (
-                <tr key={p.id} className="transition-colors hover:bg-[#F8F9FC]">
+                <tr
+                  key={p.id}
+                  onClick={() => router.push(`/products/${p.id}`)}
+                  className="cursor-pointer transition-colors hover:bg-blue-50/40 group"
+                >
                   <td className="px-6 py-5">
-                    <p className="text-sm font-black text-gray-900 leading-tight">{p.name}</p>
-                    <p className="text-[11px] font-mono font-bold text-primary mt-0.5">/{p.slug}</p>
-                    <p className="mt-1.5 text-[10px] font-bold text-gray-400 sm:hidden">
-                      {new Date(p.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <p className="text-sm font-black text-gray-900 leading-tight group-hover:text-blue-700 transition-colors">{p.name}</p>
+                        <p className="text-[11px] font-mono font-bold text-gray-400 mt-0.5">/{p.slug}</p>
+                        <p className="mt-1.5 text-[10px] font-bold text-gray-400 sm:hidden">
+                          {new Date(p.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                        </p>
+                      </div>
+                      <span className="ml-2 hidden group-hover:inline-flex items-center gap-1 rounded-lg bg-blue-100 px-2.5 py-1 text-[10px] font-black text-blue-700 uppercase tracking-wide">
+                        <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+                        </svg>
+                        Preview
+                      </span>
+                    </div>
                   </td>
                   <td className="px-6 py-5 hidden sm:table-cell">
                     <p className="text-xs font-bold text-gray-700">{p.vendor.businessName}</p>
@@ -194,7 +210,7 @@ export default function AdminProductsPage() {
                       {p.status.replace(/_/g, " ")}
                     </span>
                   </td>
-                  <td className="px-6 py-5 text-right">
+                  <td className="px-6 py-5 text-right" onClick={(e) => e.stopPropagation()}>
                     {status === "PENDING_REVIEW" && (
                       <div className="flex justify-end gap-2.5">
                         <button

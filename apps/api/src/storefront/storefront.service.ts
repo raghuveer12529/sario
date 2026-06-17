@@ -88,11 +88,18 @@ export class StorefrontService {
     if (opts.minPrice) filters.push(`minPricePaise >= ${opts.minPrice}`);
     if (opts.maxPrice) filters.push(`minPricePaise <= ${opts.maxPrice}`);
 
+    const SORT_MAP: Record<string, string> = {
+      price_asc: "minPricePaise:asc",
+      price_desc: "minPricePaise:desc",
+      newest: "searchIndexedAt:desc",
+    };
+    const meiliSort = opts.sort ? SORT_MAP[opts.sort] : undefined;
+
     return this.search.search(
       opts.q ?? "",
       {
         filter: filters.length ? filters.join(" AND ") : undefined,
-        sort: opts.sort ? [opts.sort] : undefined,
+        sort: meiliSort ? [meiliSort] : undefined,
       },
       opts.page,
       opts.limit,
@@ -128,6 +135,26 @@ export class StorefrontService {
 
     if (!product) throw new NotFoundException("Product not found.");
     try { await this.redis.setex(cacheKey, 60, this.serializeForCache(product)); } catch { /* non-fatal */ }
+    return product;
+  }
+
+  async getProductById(id: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id, status: ProductStatus.APPROVED, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        images: { orderBy: { sortOrder: "asc" }, select: { url: true, altText: true } },
+        variants: {
+          where: { isActive: true },
+          select: { pricePaise: true, mrpPaise: true },
+          take: 1,
+          orderBy: { pricePaise: "asc" },
+        },
+      },
+    });
+    if (!product) throw new NotFoundException("Product not found.");
     return product;
   }
 

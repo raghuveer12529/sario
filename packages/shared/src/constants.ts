@@ -54,6 +54,16 @@ export const GST_RATES = {
   ACCESSORIES: 18,
 } as const;
 
+// Catalogue prices are GST-inclusive ("inclusive of all taxes"). Handloom/silk sarees —
+// the dominant category — are 5%. Used to surface the embedded tax for invoices.
+export const DEFAULT_GST_RATE = 5;
+
+/** Extract the GST component already embedded in a tax-inclusive amount (paise). */
+export function extractInclusiveGstPaise(inclusivePaise: number, ratePercent: number = DEFAULT_GST_RATE): number {
+  if (inclusivePaise <= 0) return 0;
+  return Math.round(inclusivePaise - inclusivePaise / (1 + ratePercent / 100));
+}
+
 export const SETTLEMENT_DAYS = 7;
 export const RETURN_WINDOW_DAYS = 7;
 export const COD_MAX_VALUE_PAISE = 500000; // ₹5,000

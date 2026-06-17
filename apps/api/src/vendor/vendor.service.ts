@@ -1,6 +1,7 @@
 import {
   Injectable,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
   BadRequestException,
 } from "@nestjs/common";
@@ -134,6 +135,12 @@ export class VendorService {
     });
     if (!vendor) throw new NotFoundException("Vendor not found.");
     return vendor;
+  }
+
+  async resolveVendorId(userId: string): Promise<string> {
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId }, select: { id: true } });
+    if (!vendor) throw new ForbiddenException("No vendor account found for this user.");
+    return vendor.id;
   }
 
   private async assertVendorExists(vendorId: string) {

@@ -1,12 +1,13 @@
 import { createParamDecorator, type ExecutionContext } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
+import type { JwtRole } from "../auth.types.js";
 
 export interface CurrentUserPayload {
   id: string;
   phone?: string;
   name: string | null;
   isVerified?: boolean;
-  role?: "admin";
+  role?: JwtRole;
   email?: string;
   vendor?: { id: string; businessName: string; status: string };
 }

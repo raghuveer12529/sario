@@ -12,6 +12,7 @@ export default function AuthPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAuth();
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,27 +27,33 @@ export default function AuthPage() {
   const isDev = process.env.NODE_ENV === "development";
   const nextUrl = searchParams.get("next") ?? "/account/orders";
 
-  const handleAuthSuccess = (data: { refreshToken: string; user: User }) => {
+  const handleAuthSuccess = (data: { user: User }) => {
     login(data);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    router.push(nextUrl as any);
+    if (data.user.role === "VENDOR") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      router.push("/vendor" as any);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      router.push(nextUrl as any);
+    }
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    const endpoint = mode === "signup" ? "/api/auth/register" : "/api/auth/login";
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: "Login failed" })) as { message?: string };
-        throw new Error(err.message ?? "Invalid credentials");
+        const err = await res.json().catch(() => ({ message: "Request failed" })) as { message?: string };
+        throw new Error(err.message ?? (mode === "signup" ? "Could not create account" : "Invalid credentials"));
       }
-      const data = (await res.json()) as { refreshToken: string; user: User };
+      const data = (await res.json()) as { user: User };
       handleAuthSuccess(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Something went wrong");
@@ -112,7 +119,7 @@ export default function AuthPage() {
         body: JSON.stringify({ phone: "+919876543210" }),
       });
       if (!res.ok) throw new Error("Dev login failed.");
-      const data = (await res.json()) as { refreshToken: string; user: User };
+      const data = (await res.json()) as { user: User };
       handleAuthSuccess(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Dev login error");
@@ -127,11 +134,13 @@ export default function AuthPage() {
         <div className="overflow-hidden rounded-xl border border-[#E8E8E8] bg-white shadow-sm">
           <div className="bg-primary px-6 py-8 text-white">
             <h1 className="text-2xl font-extrabold">Sario</h1>
-            <p className="mt-1 text-sm opacity-90">Sign in or create your account</p>
+            <p className="mt-1 text-sm opacity-90">
+              {mode === "signup" ? "Create your account" : "Sign in to your account"}
+            </p>
           </div>
 
           <div className="px-6 py-6">
-            <form onSubmit={(e) => { void handleLogin(e); }} className="space-y-4">
+            <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-[#4D4D4D]">
                   Email Address
@@ -153,8 +162,8 @@ export default function AuthPage() {
                 <input
                   type="password"
                   required
-                  minLength={6}
-                  placeholder="Min. 6 characters"
+                  minLength={mode === "signup" ? 8 : 6}
+                  placeholder={mode === "signup" ? "Min. 8 chars, 1 letter & 1 number" : "Your password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full rounded-xl border border-[#E8E8E8] bg-white px-4 py-2.5 text-sm text-[#1A1A1A] outline-none focus:border-primary"
@@ -162,7 +171,7 @@ export default function AuthPage() {
               </div>
 
               {error && (
-                <p className="rounded-xl bg-red-50 border border-red-100 px-3 py-2 text-xs text-[#E02B2B]">
+                <p role="alert" aria-live="assertive" className="rounded-xl bg-red-50 border border-red-100 px-3 py-2 text-xs text-[#E02B2B]">
                   {error}
                 </p>
               )}
@@ -172,8 +181,21 @@ export default function AuthPage() {
                 disabled={loading}
                 className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {loading ? "Signing in…" : "Sign In"}
+                {loading
+                  ? mode === "signup" ? "Creating account…" : "Signing in…"
+                  : mode === "signup" ? "Create Account" : "Sign In"}
               </button>
+
+              <p className="text-center text-xs text-[#696969]">
+                {mode === "signup" ? "Already have an account?" : "New to Sario?"}{" "}
+                <button
+                  type="button"
+                  onClick={() => { setMode(mode === "signup" ? "signin" : "signup"); setError(""); }}
+                  className="font-bold text-primary hover:underline"
+                >
+                  {mode === "signup" ? "Sign in" : "Create an account"}
+                </button>
+              </p>
 
               {isDev && (
                 <div className="pt-2 border-t border-dashed border-gray-100 mt-4">

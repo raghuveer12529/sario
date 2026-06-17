@@ -46,3 +46,6 @@ coverage/
 sario-master-plan.md
 .claude/.mcp.json
 #
+
+# Cloudflare tunnel logs/pids (local dev sharing)
+.tunnel-logs/

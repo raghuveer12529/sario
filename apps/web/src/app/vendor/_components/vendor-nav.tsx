@@ -74,8 +74,8 @@ export function VendorNav({ vendor }: { vendor: Vendor }) {
       {/* Desktop sidebar */}
       <div className="hidden lg:flex flex-col fixed inset-y-0 left-0 w-56 bg-white border-r border-[#F0F0F0] z-30">
         <div className="px-4 py-5 border-b border-[#F0F0F0]">
-          <p className="text-base font-extrabold text-primary tracking-tight">Sario Vendor</p>
-          <p className="mt-0.5 text-xs text-[#696969] truncate">{vendor.businessName}</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#9B9B9B]">Sario Vendor</p>
+          <p className="mt-1 text-lg font-extrabold text-[#1A1A1A] leading-tight">{vendor.businessName}</p>
           <span className="mt-2 inline-block rounded-full bg-green-50 border border-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700 uppercase tracking-wide">
             Approved
           </span>

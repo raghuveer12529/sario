@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
-import { ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { TerminusModule } from "@nestjs/terminus";
 import { ScheduleModule } from "@nestjs/schedule";
 import { AppController } from "./app.controller.js";
@@ -41,6 +42,11 @@ import { QueueModule } from "./queue/queue.module.js";
     QueueModule,
   ],
   controllers: [AppController, AdminProductController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Global rate limiting (100 req/min default). Tighter per-route limits live on
+    // auth/checkout/refund handlers via @Throttle.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

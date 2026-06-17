@@ -1,10 +1,12 @@
-import { Controller, Get, Post, Param, Query, Body, UseGuards } from "@nestjs/common";
+import { Controller, Get, Post, Param, Query, Body, UseGuards, NotFoundException } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { IsString, IsOptional } from "class-validator";
 import { ProductStatus } from "@sario/db";
 import { ProductService } from "./product.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { RolesGuard } from "../auth/guards/roles.guard.js";
+import { Roles } from "../auth/decorators/roles.decorator.js";
 
 class RejectProductDto {
   @IsString() @IsOptional() reason?: string;
@@ -12,13 +14,33 @@ class RejectProductDto {
 
 @ApiTags("Admin — Products")
 @Controller({ path: "admin/products", version: "1" })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles("SUPER_ADMIN", "SUPPORT")
 @ApiBearerAuth()
 export class AdminProductController {
   constructor(
     private readonly productService: ProductService,
     private readonly prisma: PrismaService,
   ) {}
+
+  @Get(":id")
+  @ApiOperation({ summary: "Get full product detail for admin preview" })
+  async getOne(@Param("id") id: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id, deletedAt: null },
+      include: {
+        vendor: { select: { businessName: true, slug: true, about: true } },
+        category: { select: { name: true } },
+        variants: {
+          include: { inventory: { select: { quantity: true, reservedQuantity: true } } },
+          orderBy: { pricePaise: "asc" },
+        },
+        images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] },
+      },
+    });
+    if (!product) throw new NotFoundException("Product not found");
+    return product;
+  }
 
   @Get()
   @ApiOperation({ summary: "List products by status" })

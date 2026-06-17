@@ -90,14 +90,25 @@ export default function ProfilePage() {
             <button className="flex w-full items-center px-4 py-3 text-sm font-semibold text-primary bg-primary/5 rounded-lg text-left">
               Personal Information
             </button>
-            <button 
+            <button
               onClick={() => router.push("/account/orders")}
               className="flex w-full items-center px-4 py-3 text-sm font-medium text-[#4D4D4D] hover:bg-[#F5F5F5] rounded-lg text-left transition-colors"
             >
               Order History
             </button>
-            <button className="flex w-full items-center px-4 py-3 text-sm font-medium text-[#4D4D4D] hover:bg-[#F5F5F5] rounded-lg text-left transition-colors">
-              Saved Addresses
+            <button
+              onClick={() => router.push("/wishlist")}
+              className="flex w-full items-center px-4 py-3 text-sm font-medium text-[#4D4D4D] hover:bg-[#F5F5F5] rounded-lg text-left transition-colors"
+            >
+              Saved Items
+            </button>
+            <button
+              disabled
+              title="Coming soon"
+              className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-[#BBBBBB] rounded-lg text-left cursor-not-allowed"
+            >
+              <span>Saved Addresses</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-[#F0F0F0] text-[#9B9B9B] px-2 py-0.5 rounded-full">Soon</span>
             </button>
           </nav>
         </div>

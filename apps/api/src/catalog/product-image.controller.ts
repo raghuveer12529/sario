@@ -33,7 +33,7 @@ export class ProductImageController {
   ) {}
 
   @Post("presign")
-  @ApiOperation({ summary: "Get a presigned PUT URL for R2 image upload" })
+  @ApiOperation({ summary: "Get Cloudinary upload parameters for a product image" })
   async presign(
     @CurrentUser() user: CurrentUserPayload,
     @Param("productId") productId: string,
@@ -45,11 +45,7 @@ export class ProductImageController {
       throw new BadRequestException("Only jpeg, png, and webp images are allowed.");
     }
 
-    const dotIdx = dto.filename.lastIndexOf(".");
-    const ext = dotIdx >= 0 ? dto.filename.slice(dotIdx + 1) : "jpg";
-    const key = `products/${productId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const { presignedUrl, publicUrl } = await this.upload.presign(key, dto.contentType);
-    return { presignedUrl, publicUrl, key };
+    return this.upload.presign(`sario/products/${productId}`);
   }
 
   @Post()

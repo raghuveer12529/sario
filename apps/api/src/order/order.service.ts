@@ -7,6 +7,8 @@ import {
 import { OrderStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { ShiprocketService } from "../shiprocket/shiprocket.service.js";
+import { VendorService } from "../vendor/vendor.service.js";
+import { ReturnsService } from "../returns/returns.service.js";
 
 const BUYER_CANCELLABLE: readonly OrderStatus[] = [
   OrderStatus.PENDING,
@@ -22,6 +24,8 @@ export class OrderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly shiprocket: ShiprocketService,
+    private readonly vendor: VendorService,
+    private readonly returns: ReturnsService,
   ) {}
 
   // ─── Buyer ─────────────────────────────────────────────────────────────────
@@ -47,7 +51,7 @@ export class OrderService {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        items: { include: { variant: true } },
+        items: { include: { variant: { include: { product: { select: { name: true, slug: true, description: true } } } } } },
         payments: { select: { status: true, method: true, capturedAt: true } },
         shipment: true,
         refunds: true,
@@ -63,6 +67,26 @@ export class OrderService {
     if (!BUYER_CANCELLABLE.includes(order.status)) {
       throw new BadRequestException(`Order in ${order.status} status cannot be cancelled.`);
     }
+
+    if (order.status === OrderStatus.CONFIRMED) {
+      // Paid order: refund the buyer (also restocks the items) before cancelling.
+      await this.returns.issueRefund(orderId, undefined, `Order cancelled: ${reason}`);
+    } else {
+      // Unpaid (PENDING): nothing was charged — just free the reserved units.
+      const items = await this.prisma.orderItem.findMany({
+        where: { orderId },
+        select: { variantId: true, quantity: true },
+      });
+      for (const item of items) {
+        await this.prisma.inventory
+          .update({
+            where: { variantId: item.variantId },
+            data: { reservedQuantity: { decrement: item.quantity } },
+          })
+          .catch(() => null);
+      }
+    }
+
     return this.prisma.order.update({
       where: { id: orderId },
       data: { status: OrderStatus.CANCELLED, cancellationReason: reason, cancelledAt: new Date() },
@@ -86,12 +110,13 @@ export class OrderService {
 
   // ─── Vendor ────────────────────────────────────────────────────────────────
 
-  async listForVendor(vendorId: string, page: number, limit: number, status?: OrderStatus) {
+  async listForVendor(userId: string, page: number, limit: number, status?: OrderStatus) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
     const where = status ? { vendorId, status } : { vendorId };
     const [data, total] = await Promise.all([
       this.prisma.order.findMany({
         where,
-        include: { items: { include: { variant: true } }, shipment: true },
+        include: { items: { include: { variant: { include: { product: { select: { name: true, slug: true } }, images: { where: { isPrimary: true }, take: 1 } } } } }, shipment: true },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
@@ -101,7 +126,8 @@ export class OrderService {
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
-  async advanceOrderStatus(vendorId: string, orderId: string) {
+  async advanceOrderStatus(userId: string, orderId: string) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException();
     if (order.vendorId !== vendorId) throw new ForbiddenException();
@@ -116,7 +142,8 @@ export class OrderService {
     return this.prisma.order.update({ where: { id: orderId }, data: updateData });
   }
 
-  async createShipment(vendorId: string, orderId: string) {
+  async createShipment(userId: string, orderId: string) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { items: { include: { variant: true } }, address: true },
@@ -165,4 +192,5 @@ export class OrderService {
 
     return result;
   }
+
 }

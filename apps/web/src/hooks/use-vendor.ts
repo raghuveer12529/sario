@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, getAuthHeader } from "@/lib/api";
 
 export type VendorStatus = "DRAFT" | "PENDING" | "APPROVED" | "SUSPENDED";
 
@@ -43,6 +43,7 @@ export function useVendor(): UseVendorReturn {
     try {
       const res = await fetch(`${API_BASE}/vendors/me`, {
         credentials: "include",
+        headers: { ...getAuthHeader() },
       });
       if (res.status === 404) {
         setVendor(null);

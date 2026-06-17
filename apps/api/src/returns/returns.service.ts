@@ -2,12 +2,14 @@ import { Injectable, BadRequestException, NotFoundException, ForbiddenException 
 import { OrderStatus, RefundStatus, PaymentStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { RazorpayService } from "../payment/razorpay.service.js";
+import { VendorService } from "../vendor/vendor.service.js";
 
 @Injectable()
 export class ReturnsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly razorpay: RazorpayService,
+    private readonly vendor: VendorService,
   ) {}
 
   // ─── Buyer ─────────────────────────────────────────────────────────────────
@@ -31,7 +33,8 @@ export class ReturnsService {
 
   // ─── Vendor ────────────────────────────────────────────────────────────────
 
-  async approveReturn(vendorId: string, orderId: string) {
+  async approveReturn(userId: string, orderId: string) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
     const order = await this.assertVendorOrder(vendorId, orderId);
     if (order.status !== OrderStatus.RETURN_REQUESTED) {
       throw new BadRequestException("No pending return request.");
@@ -42,7 +45,8 @@ export class ReturnsService {
     });
   }
 
-  async rejectReturn(vendorId: string, orderId: string, reason: string) {
+  async rejectReturn(userId: string, orderId: string, reason: string) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
     const order = await this.assertVendorOrder(vendorId, orderId);
     if (order.status !== OrderStatus.RETURN_REQUESTED) {
       throw new BadRequestException("No pending return request.");
@@ -57,17 +61,44 @@ export class ReturnsService {
   // ─── Admin / post-QC refund ─────────────────────────────────────────────────
 
   async processRefund(orderId: string, amountPaise?: number) {
+    const refund = await this.issueRefund(orderId, amountPaise, "Return approved");
+    await this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.REFUNDED },
+    });
+    return refund;
+  }
+
+  /**
+   * Reusable refund core: group-aware payment lookup, idempotent, capped at the order
+   * total and the payment's remaining refundable balance. Restocks the order's items.
+   * Does NOT change order status — the caller decides REFUNDED vs CANCELLED.
+   */
+  async issueRefund(orderId: string, amountPaise: number | undefined, reason: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { payments: { where: { status: PaymentStatus.CAPTURED } } },
+      include: { items: { select: { variantId: true, quantity: true } } },
     });
     if (!order) throw new NotFoundException();
 
-    const payment = order.payments[0];
+    // Idempotency: never refund an order twice.
+    const existing = await this.prisma.refund.findFirst({
+      where: { orderId, status: { in: [RefundStatus.PENDING, RefundStatus.PROCESSED] } },
+    });
+    if (existing) return existing;
+
+    const payment = await this.findGroupPayment(order);
     if (!payment) throw new BadRequestException("No captured payment found.");
     if (!payment.razorpayPaymentId) throw new BadRequestException("Missing Razorpay payment ID.");
 
-    const refundAmount = amountPaise ?? order.totalPaise;
+    // Cap: this order's total, and never more than the payment's remaining refundable balance.
+    const priorRefundsPaise = await this.sumPaymentRefunds(payment.id);
+    const remainingPaise = payment.amountPaise - priorRefundsPaise;
+    const requested = amountPaise ?? order.totalPaise;
+    const refundAmount = Math.min(requested, order.totalPaise, remainingPaise);
+    if (refundAmount <= 0) {
+      throw new BadRequestException("Nothing left to refund on this payment.");
+    }
 
     const rzRefund = await this.razorpay.createRefund(payment.razorpayPaymentId, refundAmount);
 
@@ -77,18 +108,48 @@ export class ReturnsService {
         paymentId: payment.id,
         razorpayRefundId: rzRefund.id,
         amountPaise: refundAmount,
-        reason: "Return approved",
+        reason,
         status: RefundStatus.PROCESSED,
         processedAt: new Date(),
       },
     });
 
-    await this.prisma.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.REFUNDED },
-    });
+    // Return the units to sellable stock.
+    for (const item of order.items) {
+      await this.prisma.inventory
+        .update({
+          where: { variantId: item.variantId },
+          data: { quantity: { increment: item.quantity } },
+        })
+        .catch(() => null);
+    }
 
     return refund;
+  }
+
+  /** Find the captured payment for an order's checkout group (payment sits on the anchor order). */
+  private async findGroupPayment(order: { id: string; userId: string; checkoutGroupId: string | null }) {
+    const own = await this.prisma.payment.findFirst({
+      where: { orderId: order.id, status: PaymentStatus.CAPTURED },
+    });
+    if (own) return own;
+    if (!order.checkoutGroupId) return null;
+
+    const groupOrders = await this.prisma.order.findMany({
+      where: { userId: order.userId, checkoutGroupId: order.checkoutGroupId },
+      select: { id: true },
+    });
+    return this.prisma.payment.findFirst({
+      where: { orderId: { in: groupOrders.map((o) => o.id) }, status: PaymentStatus.CAPTURED },
+    });
+  }
+
+  private async sumPaymentRefunds(paymentId: string): Promise<number> {
+    const agg = await this.prisma.refund.aggregate({
+      where: { paymentId, status: { in: [RefundStatus.PENDING, RefundStatus.PROCESSED] } },
+      _sum: { amountPaise: true },
+    });
+    return agg._sum.amountPaise ?? 0;
   }
 
   private async assertVendorOrder(vendorId: string, orderId: string) {

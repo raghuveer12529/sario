@@ -4,6 +4,8 @@ import { IsOptional, IsString } from "class-validator";
 import { VendorStatus } from "@sario/db";
 import { VendorService } from "./vendor.service.js";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { RolesGuard } from "../auth/guards/roles.guard.js";
+import { Roles } from "../auth/decorators/roles.decorator.js";
 
 class RejectVendorDto {
   @IsString()
@@ -13,7 +15,8 @@ class RejectVendorDto {
 
 @ApiTags("Admin — Vendors")
 @Controller({ path: "admin/vendors", version: "1" })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles("SUPER_ADMIN", "SUPPORT")
 @ApiBearerAuth()
 export class AdminVendorController {
   constructor(private readonly vendorService: VendorService) {}

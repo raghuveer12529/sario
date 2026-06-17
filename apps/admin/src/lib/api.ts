@@ -15,9 +15,10 @@ export function getAdminToken(): string | null {
 
 export async function adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getAdminToken();
+  const hasBody = options?.body != null;
   const res = await fetch(`${API_BASE}${path}`, {
     headers: {
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },

@@ -9,13 +9,13 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   // ── Admin user ──────────────────────────────────────────────────────────────
-  // Dev password: Admin@sario1
+  // Dev password: Password1!
   const admin = await prisma.adminUser.upsert({
     where: { email: "admin@sario.in" },
-    update: { passwordHash: "$2b$10$lpGk.r5zGOiUbNp0uNHt9.qK/qij7FhimpBoK1SiD7xchsiWrpjdS" },
+    update: { passwordHash: "$2b$10$3EU5QRjIIca/adf5TzNbBuRc//YxQ8AcPFOMxn8xMebDTXKj.ISyO" },
     create: {
       email: "admin@sario.in",
-      passwordHash: "$2b$10$lpGk.r5zGOiUbNp0uNHt9.qK/qij7FhimpBoK1SiD7xchsiWrpjdS",
+      passwordHash: "$2b$10$3EU5QRjIIca/adf5TzNbBuRc//YxQ8AcPFOMxn8xMebDTXKj.ISyO",
       name: "Sario Admin",
       role: AdminRole.SUPER_ADMIN,
     },
@@ -198,9 +198,9 @@ async function main() {
     prisma.user.upsert({ where: { phone: "+917654321098" }, update: {}, create: { phone: "+917654321098", name: "Sita Krishnan", email: "sita@example.com", isVerified: true, trustScore: 65 } }),
   ]);
 
-  // ── Vendor owner accounts — Dev password: Vendor@sario1 ─────────────────────
+  // ── Vendor owner accounts — Dev password: Password1! ────────────────────────
   // Login at /auth/vendor/login with these email + password credentials
-  const vendorPwHash = "$2b$10$CwU8bYy3aZTtCePd.RLJCOnP/ghzwVSu/vlS158c8lVONAnwliQz6";
+  const vendorPwHash = "$2b$10$3EU5QRjIIca/adf5TzNbBuRc//YxQ8AcPFOMxn8xMebDTXKj.ISyO";
   const [vendorUser1, vendorUser2] = await Promise.all([
     prisma.user.upsert({
       where: { email: "vendor1@sario.dev" },
@@ -1190,15 +1190,15 @@ async function main() {
 ╠══════════════════════════════════════════════════════╣
 ║  ADMIN (apps/admin → http://localhost:3001/login)    ║
 ║    email:    admin@sario.in                          ║
-║    password: Admin@sario1                            ║
+║    password: Password1!                              ║
 ╠══════════════════════════════════════════════════════╣
 ║  VENDOR 1 — Roop Kashish Textiles (APPROVED)         ║
 ║    email:    vendor1@sario.dev                       ║
-║    password: Vendor@sario1                           ║
+║    password: Password1!                              ║
 ║    portal:   http://localhost:3000/vendor            ║
 ║  VENDOR 2 — Chanderi Craft Studio (APPROVED)         ║
 ║    email:    vendor2@sario.dev                       ║
-║    password: Vendor@sario1                           ║
+║    password: Password1!                              ║
 ║    portal:   http://localhost:3000/vendor            ║
 ╠══════════════════════════════════════════════════════╣
 ║  CUSTOMERS (apps/web → http://localhost:3000)        ║

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import Script from "next/script";
 import { apiFetch } from "@/lib/api";
 import { formatPaise } from "@sario/ui";
+import { extractInclusiveGstPaise } from "@sario/shared";
 import { useAuth } from "@/hooks/use-auth";
 
 interface Address {
@@ -33,6 +34,7 @@ interface CartLineItem {
 interface CartSummary {
   subtotal: number;
   shipping: number;
+  tax: number;
   total: number;
   itemCount: number;
 }
@@ -73,6 +75,14 @@ export default function CheckoutPage() {
     city: "", state: "", pincode: "",
   });
 
+  // Stable across retries of the same checkout attempt so the API dedupes
+  // duplicate order creation. Reset only when the page remounts.
+  const idempotencyKeyRef = useRef<string>("");
+  const getIdempotencyKey = () => {
+    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = crypto.randomUUID();
+    return idempotencyKeyRef.current;
+  };
+
   useEffect(() => {
     if (authLoading || !isAuthenticated) return;
 
@@ -94,7 +104,13 @@ export default function CheckoutPage() {
         setCartItems(items);
         const subtotal = items.reduce((s, i) => s + i.pricePaise * i.quantity, 0);
         const shipping = subtotal >= 200000 ? 0 : 5000;
-        setCart({ subtotal, shipping, total: subtotal + shipping, itemCount: items.length });
+        setCart({
+          subtotal,
+          shipping,
+          tax: extractInclusiveGstPaise(subtotal),
+          total: subtotal + shipping,
+          itemCount: items.length,
+        });
       })
       .catch(() => null);
   }, [isAuthenticated, authLoading]);
@@ -224,6 +240,7 @@ export default function CheckoutPage() {
     try {
       const data = await apiFetch<{ razorpayOrderId: string; amountPaise: number }>("/checkout/initiate", {
         method: "POST",
+        headers: { "Idempotency-Key": getIdempotencyKey() },
         body: JSON.stringify({ addressId: selectedAddressId }),
       });
       openUpiIntent(
@@ -250,6 +267,7 @@ export default function CheckoutPage() {
     try {
       const data = await apiFetch<{ razorpayOrderId: string; amountPaise: number }>("/checkout/initiate", {
         method: "POST",
+        headers: { "Idempotency-Key": getIdempotencyKey() },
         body: JSON.stringify({ addressId: selectedAddressId }),
       });
       payFn(data.razorpayOrderId, data.amountPaise);
@@ -264,7 +282,7 @@ export default function CheckoutPage() {
   const devConfirm = async (razorpayOrderId: string) => {
     setLoading(true);
     try {
-      await apiFetch(`/checkout/dev/confirm/${razorpayOrderId}`, { method: "POST" });
+      await apiFetch(`/checkout/dev/confirm/${razorpayOrderId}`, { method: "POST", body: "{}" });
       const eta = new Date();
       eta.setDate(eta.getDate() + 7);
       setEstimatedDelivery(eta.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }));
@@ -288,6 +306,7 @@ export default function CheckoutPage() {
       try {
         const data = await apiFetch<{ razorpayOrderId: string; amountPaise: number }>("/checkout/initiate", {
           method: "POST",
+          headers: { "Idempotency-Key": getIdempotencyKey() },
           body: JSON.stringify({ addressId: selectedAddressId }),
         });
         await devConfirm(data.razorpayOrderId);
@@ -384,7 +403,7 @@ export default function CheckoutPage() {
         </div>
 
         {error && (
-          <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div role="alert" aria-live="assertive" className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <svg className="mt-0.5 h-4 w-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
             </svg>
@@ -598,6 +617,9 @@ export default function CheckoutPage() {
                     <span className="text-base font-bold text-[#1A1A1A]">Total Payable</span>
                     <span className="text-base font-extrabold text-primary">{formatPaise(cart.total)}</span>
                   </div>
+                  <p className="text-[11px] text-[#9B9B9B]">
+                    Inclusive of GST {formatPaise(cart.tax)}
+                  </p>
                 </div>
                 {cart.shipping === 0 && (
                   <div className="bg-[#F0F9F1] px-5 py-3 border-t border-[#DDF0E0]">

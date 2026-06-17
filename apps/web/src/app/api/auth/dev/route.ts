@@ -25,13 +25,20 @@ export async function POST(req: NextRequest) {
     user: { id: string; phone: string; name: string | null; isVerified: boolean };
   };
 
-  const res = NextResponse.json({ user: data.user, refreshToken: data.refreshToken });
+  const res = NextResponse.json({ user: data.user });
   res.cookies.set("access_token", data.accessToken, {
     httpOnly: true,
     secure: false,
     sameSite: "lax",
     maxAge: 15 * 60,
     path: "/",
+  });
+  res.cookies.set("refresh_token", data.refreshToken, {
+    httpOnly: true,
+    secure: false,
+    sameSite: "lax",
+    maxAge: 30 * 24 * 60 * 60,
+    path: "/api/auth",
   });
   return res;
 }

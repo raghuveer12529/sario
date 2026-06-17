@@ -1,6 +1,7 @@
 import { Controller, Post, Body, Headers, Param, UseGuards, RawBodyRequest, Req } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
-import { IsString, IsOptional } from "class-validator";
+import { Throttle, SkipThrottle } from "@nestjs/throttler";
+import { IsString } from "class-validator";
 import { ConfigService } from "@nestjs/config";
 import { CheckoutService } from "./checkout.service.js";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
@@ -9,7 +10,6 @@ import type { FastifyRequest } from "fastify";
 
 class InitiateCheckoutDto {
   @IsString() addressId: string;
-  @IsString() @IsOptional() couponCode?: string;
 }
 
 class VerifyPaymentDto {
@@ -27,14 +27,23 @@ export class CheckoutController {
   ) {}
 
   @Post("initiate")
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Initiate checkout — returns Razorpay order details" })
-  initiate(@CurrentUser() user: CurrentUserPayload, @Body() dto: InitiateCheckoutDto) {
-    return this.checkoutService.initiate(user.id, dto);
+  initiate(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: InitiateCheckoutDto,
+    @Headers("idempotency-key") idempotencyKey?: string,
+  ) {
+    return this.checkoutService.initiate(user.id, {
+      ...dto,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+    });
   }
 
   @Post("webhook/razorpay")
+  @SkipThrottle()
   @ApiOperation({ summary: "Razorpay webhook receiver (no auth — signature verified internally)" })
   webhook(
     @Req() req: RawBodyRequest<FastifyRequest>,

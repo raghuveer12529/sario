@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import type { Route } from "next";
 import { apiFetch } from "@/lib/api";
 import Link from "next/link";
-import Image from "next/image";
 import { SearchControls, SidebarFilters } from "./search-controls";
+import { ProductCard } from "@/components/product-card";
 
 export const metadata: Metadata = { title: "Search Sarees — Sario" };
 
@@ -51,7 +51,7 @@ export default async function SearchPage({
     if (sort) params.set("sort", sort);
     if (minPrice) params.set("minPrice", minPrice);
     if (maxPrice) params.set("maxPrice", maxPrice);
-    if (occasion) params.set("occasion", encodeURIComponent(occasion));
+    if (occasion) params.set("occasion", occasion);
     result = await apiFetch<SearchResult>(`/catalog/search?${params.toString()}`, { cache: "no-store" });
   } catch {
     // API unavailable — show empty state
@@ -112,70 +112,21 @@ export default async function SearchPage({
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {result.hits.map((hit) => {
-                  const price = hit.minPricePaise;
-                  const mrp = hit.mrpPaise ?? 0;
-                  const discount = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
-                  return (
-                    <Link
-                      key={hit.id}
-                      href={`/p/${hit.slug}` as Route}
-                      className="group block bg-white rounded-xl border border-[#F0F0F0] overflow-hidden hover:shadow-md hover:border-[#E0E0E0] transition-all"
-                    >
-                      <div className="relative aspect-[3/4] overflow-hidden bg-[#F5F5F5]">
-                        {hit.primaryImageUrl ? (
-                          <Image
-                            src={hit.primaryImageUrl}
-                            alt={hit.name}
-                            fill
-                            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                            className="object-cover transition-transform duration-300 group-hover:scale-105"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center">
-                            <svg className="h-12 w-12 text-[#DDDDDD]" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24">
-                              <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" />
-                            </svg>
-                          </div>
-                        )}
-                        {discount > 0 && (
-                          <span className="absolute left-0 top-2 bg-[#E8590C] px-2 py-0.5 text-xs font-bold text-white rounded-r-sm">
-                            {discount}% OFF
-                          </span>
-                        )}
-                      </div>
-                      <div className="p-2.5">
-                        <p className="line-clamp-2 text-xs font-medium text-[#1A1A1A] leading-tight">{hit.name}</p>
-                        {hit.vendorName && hit.vendorSlug && (
-                          <Link
-                            href={`/weavers/${hit.vendorSlug}` as Route}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-[10px] text-[#9B9B9B] hover:text-primary transition-colors truncate block"
-                          >
-                            {hit.vendorName}
-                          </Link>
-                        )}
-                        {hit.region && (
-                          <p className="mt-0.5 text-xs text-[#9B9B9B]">{hit.region}</p>
-                        )}
-                        <div className="mt-1.5 flex flex-wrap items-baseline gap-1">
-                          <span className="text-sm font-bold text-[#1A1A1A]">
-                            ₹{Math.round(price / 100).toLocaleString("en-IN")}
-                          </span>
-                          {discount > 0 && (
-                            <>
-                              <span className="text-xs text-[#9B9B9B] line-through">
-                                ₹{Math.round(mrp / 100).toLocaleString("en-IN")}
-                              </span>
-                              <span className="text-xs font-semibold text-[#26A541]">{discount}% off</span>
-                            </>
-                          )}
-                        </div>
-                        <p className="mt-0.5 text-xs font-medium text-[#26A541]">Free Delivery</p>
-                      </div>
-                    </Link>
-                  );
-                })}
+                {result.hits.map((hit) => (
+                  <ProductCard
+                    key={hit.id}
+                    id={hit.id}
+                    name={hit.name}
+                    slug={hit.slug}
+                    primaryImageUrl={hit.primaryImageUrl}
+                    price={hit.minPricePaise}
+                    mrp={hit.mrpPaise ?? 0}
+                    vendorName={hit.vendorName}
+                    vendorSlug={hit.vendorSlug}
+                    fabric={hit.fabric}
+                    region={hit.region}
+                  />
+                ))}
               </div>
 
               {/* Pagination */}

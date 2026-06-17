@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import type { Route } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { WishlistButton } from "./wishlist-button";
+import { ProductCard } from "@/components/product-card";
 
 const API_BASE = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:4000/v1";
 
@@ -405,64 +405,20 @@ function ProductGrid({ products }: { products: Product[] }) {
   }
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-      {products.map((p) => {
-        const price = p.variants[0]?.pricePaise ?? 0;
-        const mrp = p.variants[0]?.mrpPaise ?? 0;
-        const discount = mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
-        return (
-          <Link key={p.id} href={`/p/${p.slug}`} className="group block bg-white rounded-xl border border-[#F0F0F0] overflow-hidden hover:shadow-md hover:border-[#E0E0E0] transition-all">
-            <div className="relative aspect-[3/4] overflow-hidden bg-[#F5F5F5]">
-              {p.images[0] ? (
-                <Image
-                  src={p.images[0].url}
-                  alt={p.images[0].altText ?? p.name}
-                  fill
-                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-                  className="object-cover transition-transform duration-300 group-hover:scale-105"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center">
-                  <svg className="h-12 w-12 text-[#DDDDDD]" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24">
-                    <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" />
-                  </svg>
-                </div>
-              )}
-              {discount > 0 && (
-                <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm">
-                  {discount}% off
-                </span>
-              )}
-              <WishlistButton productId={p.id} />
-            </div>
-            <div className="p-2.5">
-              <p className="line-clamp-2 text-sm font-semibold text-[#1A1A1A] leading-snug">{p.name}</p>
-              {p.vendorName && p.vendorSlug && (
-                <Link
-                  href={`/weavers/${p.vendorSlug}` as Route}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-[10px] text-[#9B9B9B] hover:text-primary transition-colors truncate block"
-                >
-                  {p.vendorName}
-                </Link>
-              )}
-              {p.variants[0] && (
-                <div className="mt-1.5 flex flex-wrap items-baseline gap-1">
-                  <span className="text-base font-bold text-[#1A1A1A]">
-                    ₹{Math.round(price / 100).toLocaleString("en-IN")}
-                  </span>
-                  {discount > 0 && (
-                    <>
-                      <span className="text-xs text-[#9B9B9B] line-through">
-                        ₹{Math.round(mrp / 100).toLocaleString("en-IN")}
-                      </span>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          </Link>
-        );
-      })}
+      {products.map((p) => (
+        <ProductCard
+          key={p.id}
+          id={p.id}
+          name={p.name}
+          slug={p.slug}
+          primaryImageUrl={p.images[0]?.url}
+          price={p.variants[0]?.pricePaise ?? 0}
+          mrp={p.variants[0]?.mrpPaise ?? 0}
+          vendorName={p.vendorName}
+          vendorSlug={p.vendorSlug}
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+        />
+      ))}
     </div>
   );
 }

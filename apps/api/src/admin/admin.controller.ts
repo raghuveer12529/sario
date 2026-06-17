@@ -1,12 +1,15 @@
-import { BadRequestException, Controller, Get, Post, Param, Query, Body } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiQuery } from "@nestjs/swagger";
-import { IsOptional, IsString } from "class-validator";
-import { OrderStatus, ProductStatus, PaymentStatus, RefundStatus } from "@sario/db";
+import { Controller, Get, Post, Param, Query, Body, UseGuards } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from "@nestjs/swagger";
+import { IsOptional, IsString, IsInt, Min } from "class-validator";
+import { OrderStatus, ProductStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
-import { RazorpayService } from "../payment/razorpay.service.js";
+import { ReturnsService } from "../returns/returns.service.js";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { RolesGuard } from "../auth/guards/roles.guard.js";
+import { Roles } from "../auth/decorators/roles.decorator.js";
 
 class RejectReturnDto { @IsString() @IsOptional() reason?: string; }
-class RefundAmountDto { @IsOptional() amountPaise?: number; }
+class RefundAmountDto { @IsInt() @Min(1) @IsOptional() amountPaise?: number; }
 
 const RETURN_STATUSES: readonly OrderStatus[] = [
   OrderStatus.RETURN_REQUESTED,
@@ -17,10 +20,13 @@ const RETURN_STATUSES: readonly OrderStatus[] = [
 
 @ApiTags("Admin")
 @Controller({ version: "1" })
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles("SUPER_ADMIN", "SUPPORT")
+@ApiBearerAuth()
 export class AdminController {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly razorpay: RazorpayService,
+    private readonly returnsService: ReturnsService,
   ) {}
 
   // ── Stats ───────────────────────────────────────────────────────────────────
@@ -168,43 +174,7 @@ export class AdminController {
   @Post("admin/returns/:id/refund")
   @ApiOperation({ summary: "Admin issues refund for approved return" })
   async processRefund(@Param("id") id: string, @Body() dto: RefundAmountDto) {
-    const order = await this.prisma.order.findUniqueOrThrow({
-      where: { id },
-      include: { payments: { where: { status: PaymentStatus.CAPTURED } } },
-    });
-
-    const payment = order.payments[0];
-    if (!payment) throw new BadRequestException("No captured payment found.");
-
-    const refundAmount = dto.amountPaise ?? order.totalPaise;
-
-    let razorpayRefundId: string | null = null;
-    if (payment?.razorpayPaymentId) {
-      try {
-        const rzRefund = await this.razorpay.createRefund(payment.razorpayPaymentId, refundAmount);
-        razorpayRefundId = rzRefund.id;
-      } catch {
-        // mock payment ID — skip Razorpay call in dev
-      }
-    }
-
-    const refund = await this.prisma.refund.create({
-      data: {
-        orderId: id,
-        paymentId: payment.id,
-        razorpayRefundId: razorpayRefundId ?? `manual_refund_${id}`,
-        amountPaise: refundAmount,
-        reason: "Return approved by admin",
-        status: RefundStatus.PROCESSED,
-        processedAt: new Date(),
-      },
-    });
-
-    await this.prisma.order.update({
-      where: { id },
-      data: { status: OrderStatus.REFUNDED },
-    });
-
-    return refund;
+    // Delegate to the single source of truth: group-aware, idempotent, capped refunds.
+    return this.returnsService.processRefund(id, dto.amountPaise);
   }
 }

@@ -3,6 +3,7 @@ import {
   // OTP_DISABLED: BadRequestException,
   UnauthorizedException,
   ForbiddenException,
+  ConflictException,
   Logger,
   // OTP_DISABLED: InternalServerErrorException,
   // OTP_DISABLED: HttpException,
@@ -163,6 +164,15 @@ export class AuthService {
   }
 
   async updateMe(userId: string, data: any) {
+    if (data.email) {
+      const clash = await this.prisma.user.findUnique({
+        where: { email: data.email },
+        select: { id: true },
+      });
+      if (clash && clash.id !== userId) {
+        throw new ConflictException("That email is already in use.");
+      }
+    }
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -185,26 +195,46 @@ export class AuthService {
   }
 
   async login(email: string, password: string): Promise<AuthResponse> {
-    let user = await this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { email },
       select: { id: true, email: true, phone: true, name: true, isVerified: true, passwordHash: true },
     });
 
-    if (!user) {
-      const hash = await bcrypt.hash(password, 12);
-      user = await this.prisma.user.create({
-        data: { email, passwordHash: hash, isVerified: true },
-        select: { id: true, email: true, phone: true, name: true, isVerified: true, passwordHash: true },
-      });
-    } else {
-      if (!user.passwordHash) throw new UnauthorizedException("Invalid credentials.");
-      const valid = await bcrypt.compare(password, user.passwordHash);
-      if (!valid) throw new UnauthorizedException("Invalid credentials.");
-    }
+    // Do not reveal whether the email exists — same error either way. Never auto-register.
+    if (!user || !user.passwordHash) throw new UnauthorizedException("Invalid credentials.");
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) throw new UnauthorizedException("Invalid credentials.");
 
     const tokens = await this.issueTokens(user.id, user.email!, "CUSTOMER");
     const { passwordHash: _pw, ...safeUser } = user;
     return { ...tokens, user: { ...safeUser, email: user.email! } };
+  }
+
+  async register(email: string, password: string): Promise<AuthResponse> {
+    const existing = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, passwordHash: true },
+    });
+    if (existing?.passwordHash) {
+      throw new ConflictException("An account with this email already exists.");
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    // A phone-only account (e.g. legacy/dev) may already hold this email — attach the password.
+    const user = existing
+      ? await this.prisma.user.update({
+          where: { id: existing.id },
+          data: { passwordHash, isVerified: true },
+          select: { id: true, email: true, phone: true, name: true, isVerified: true },
+        })
+      : await this.prisma.user.create({
+          data: { email, passwordHash, isVerified: true },
+          select: { id: true, email: true, phone: true, name: true, isVerified: true },
+        });
+
+    const tokens = await this.issueTokens(user.id, user.email!, "CUSTOMER");
+    return { ...tokens, user: { ...user, email: user.email! } };
   }
 
   async vendorLogin(

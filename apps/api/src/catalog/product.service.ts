@@ -7,6 +7,7 @@ import { ProductStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MeilisearchService } from "./meilisearch.service.js";
 import { RedisService } from "../redis/redis.service.js";
+import { VendorService } from "../vendor/vendor.service.js";
 import type { CreateProductDto } from "./dto/create-product.dto.js";
 
 @Injectable()
@@ -15,9 +16,11 @@ export class ProductService {
     private readonly prisma: PrismaService,
     private readonly search: MeilisearchService,
     private readonly redis: RedisService,
+    private readonly vendor: VendorService,
   ) {}
 
-  async create(vendorId: string, dto: CreateProductDto) {
+  async create(userId: string, dto: CreateProductDto) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
     const slug = await this.buildUniqueSlug(dto.name);
 
     const product = await this.prisma.product.create({
@@ -52,12 +55,22 @@ export class ProductService {
     return product;
   }
 
-  async update(vendorId: string, productId: string, data: Partial<CreateProductDto>) {
+  async update(userId: string, productId: string, data: Partial<CreateProductDto>) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
     const product = await this.assertOwnership(vendorId, productId);
 
+    // Only content changes require re-moderation. Pure price/stock edits stay live so
+    // vendors can restock or reprice without their listing going dark.
+    const contentChanged =
+      data.name !== undefined ||
+      data.description !== undefined ||
+      data.fabric !== undefined ||
+      data.region !== undefined ||
+      data.weaverStory !== undefined ||
+      data.tags !== undefined;
     const needsReview =
-      product.status === ProductStatus.APPROVED ||
-      product.status === ProductStatus.REJECTED;
+      contentChanged &&
+      (product.status === ProductStatus.APPROVED || product.status === ProductStatus.REJECTED);
 
     const updateData = {
       ...(needsReview ? { status: ProductStatus.PENDING_REVIEW } : {}),
@@ -73,11 +86,61 @@ export class ProductService {
       where: { id: productId },
       data: updateData,
     });
+
+    // Apply variant price / MRP / stock edits.
+    if (data.variants?.length) {
+      // Only variants that actually belong to this product may be edited by id.
+      const owned = new Set(
+        (await this.prisma.productVariant.findMany({ where: { productId }, select: { id: true } })).map(
+          (x) => x.id,
+        ),
+      );
+      for (const v of data.variants) {
+        if (v.id) {
+          if (!owned.has(v.id)) continue;
+          await this.prisma.productVariant.update({
+            where: { id: v.id },
+            data: {
+              name: v.name,
+              sku: v.sku,
+              ...(v.color !== undefined ? { color: v.color } : {}),
+              pricePaise: v.pricePaise,
+              mrpPaise: v.mrpPaise,
+              ...(v.weightGrams !== undefined ? { weightGrams: v.weightGrams } : {}),
+            },
+          });
+          if (v.quantity !== undefined) {
+            await this.prisma.inventory.update({
+              where: { variantId: v.id },
+              data: { quantity: v.quantity },
+            });
+          }
+        } else {
+          await this.prisma.productVariant.create({
+            data: {
+              productId,
+              name: v.name,
+              sku: v.sku,
+              ...(v.color ? { color: v.color } : {}),
+              pricePaise: v.pricePaise,
+              mrpPaise: v.mrpPaise,
+              weightGrams: v.weightGrams ?? 0,
+              inventory: { create: { quantity: v.quantity ?? 0 } },
+            },
+          });
+        }
+      }
+    }
+
     await this.redis.del(`product:slug:${updatedProduct.slug}`).catch(() => {});
+    // Keep search in sync: re-index if still approved (price/availability changed),
+    // or drop from the index if the edit pushed it back into review.
+    await this.syncSearchIndex(productId).catch(() => {});
     return updatedProduct;
   }
 
-  async softDelete(vendorId: string, productId: string) {
+  async softDelete(userId: string, productId: string) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
     await this.assertOwnership(vendorId, productId);
     const deleted = await this.prisma.product.update({
       where: { id: productId },
@@ -88,9 +151,10 @@ export class ProductService {
   }
 
   async listForVendor(
-    vendorId: string,
+    userId: string,
     opts: { status?: ProductStatus; search?: string; page: number; limit: number },
   ) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
     const where = {
       vendorId,
       deletedAt: null,
@@ -114,7 +178,8 @@ export class ProductService {
     return { data, meta: { total, page: opts.page, limit: opts.limit, totalPages: Math.ceil(total / opts.limit) } };
   }
 
-  async getForVendor(vendorId: string, productId: string) {
+  async getForVendor(userId: string, productId: string) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
     const product = await this.prisma.product.findUnique({
       where: { id: productId, deletedAt: null },
       include: {
@@ -133,16 +198,38 @@ export class ProductService {
     const product = await this.prisma.product.update({
       where: { id: productId },
       data: { status: ProductStatus.APPROVED, searchIndexedAt: new Date() },
+    });
+    await this.redis.del(`product:slug:${product.slug}`).catch(() => {});
+    await this.syncSearchIndex(productId);
+    return product;
+  }
+
+  /** Upsert the product into search if APPROVED, otherwise remove it. Safe to call after any edit. */
+  private async syncSearchIndex(productId: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: productId },
       include: {
-        variants: { select: { pricePaise: true } },
+        variants: { where: { isActive: true }, select: { pricePaise: true, mrpPaise: true } },
         images: { where: { isPrimary: true }, take: 1 },
         vendor: { select: { businessName: true, slug: true } },
       },
     });
 
-    await this.redis.del(`product:slug:${product.slug}`).catch(() => {});
+    if (!product || product.status !== ProductStatus.APPROVED || product.deletedAt) {
+      await this.search.delete(productId).catch(() => {});
+      return;
+    }
+    if (product.variants.length === 0) {
+      // No sellable variants — don't surface a product with a bogus price.
+      await this.search.delete(productId).catch(() => {});
+      return;
+    }
 
     const minPricePaise = Math.min(...product.variants.map((v) => v.pricePaise));
+    const maxMrpPaise = Math.max(...product.variants.map((v) => v.mrpPaise ?? 0));
+    const searchIndexedAt = product.searchIndexedAt
+      ? Math.floor(product.searchIndexedAt.getTime() / 1000)
+      : Math.floor(Date.now() / 1000);
     await this.search.upsert({
       id: product.id,
       name: product.name,
@@ -157,11 +244,12 @@ export class ProductService {
       vendorName: product.vendor.businessName,
       vendorSlug: product.vendor.slug,
       minPricePaise,
+      ...(maxMrpPaise > 0 ? { mrpPaise: maxMrpPaise } : {}),
+      searchIndexedAt,
       ...(product.images[0]?.url ? { primaryImageUrl: product.images[0].url } : {}),
     });
-
-    return product;
   }
+
 
   private async buildUniqueSlug(name: string): Promise<string> {
     const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");

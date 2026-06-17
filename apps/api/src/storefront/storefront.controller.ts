@@ -40,7 +40,7 @@ export class StorefrontController {
     @Query("fabric") fabric?: string,
     @Query("occasion") occasion?: string,
     @Query("minPrice", new DefaultValuePipe(0), ParseIntPipe) minPrice = 0,
-    @Query("maxPrice") maxPrice?: string,
+    @Query("maxPrice", new DefaultValuePipe(0), ParseIntPipe) maxPrice = 0,
     @Query("sort") sort?: string,
     @Query("page", new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query("limit", new DefaultValuePipe(20), ParseIntPipe) limit = 20,
@@ -53,11 +53,17 @@ export class StorefrontController {
       ...(fabric ? { fabric } : {}),
       ...(occasion ? { occasion } : {}),
       ...(minPrice ? { minPrice } : {}),
-      ...(maxPrice ? { maxPrice: parseInt(maxPrice) } : {}),
+      ...(maxPrice ? { maxPrice } : {}),
       ...(sort ? { sort } : {}),
       page,
       limit,
     });
+  }
+
+  @Get("products/id/:id")
+  @ApiOperation({ summary: "Get minimal product info by ID (used by wishlist)" })
+  getProductById(@Param("id") id: string) {
+    return this.storefrontService.getProductById(id);
   }
 
   @Get("products/:slug")

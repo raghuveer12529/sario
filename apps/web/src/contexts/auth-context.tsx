@@ -9,8 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import Cookies from "js-cookie";
-import { API_BASE } from "@/lib/api";
+import { API_BASE, getAuthHeader } from "@/lib/api";
 
 export interface User {
   id: string;
@@ -19,13 +18,14 @@ export interface User {
   name: string | null;
   avatarUrl?: string;
   isVerified: boolean;
+  role?: "CUSTOMER" | "VENDOR" | "SUPER_ADMIN" | "SUPPORT";
 }
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   loading: boolean;
-  login: (data: { refreshToken: string; user: User }) => void;
+  login: (data: { user: User }) => void;
   logout: () => Promise<void>;
   updateProfile: (data: { name?: string; email?: string; avatarUrl?: string }) => Promise<User>;
 }
@@ -38,29 +38,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   const logout = useCallback(async () => {
-    // Tell the Next.js proxy to delete the httpOnly access_token cookie
+    // The Next.js proxy reads the httpOnly refresh_token cookie, revokes it server-side,
+    // and clears both auth cookies. We just clear local state.
     try {
-      const refreshToken = Cookies.get("refresh_token");
       await fetch("/api/auth/logout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken }),
         credentials: "include",
       });
     } catch { /* non-fatal — still clear local state */ }
 
-    Cookies.remove("refresh_token");
     localStorage.removeItem("user");
     setUser(null);
     router.push("/");
   }, [router]);
 
   const login = useCallback(
-    (data: { refreshToken: string; user: User }) => {
-      // access_token is set as httpOnly cookie by the Next.js proxy route — do not set it here
-      Cookies.set("refresh_token", data.refreshToken, { expires: 30, sameSite: "lax" });
+    (data: { user: User }) => {
+      // Both access_token and refresh_token are set as httpOnly cookies by the
+      // Next.js proxy route — JS never touches the tokens.
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
+      // Merge any items added as a guest into the now-authenticated cart.
+      void fetch(`${API_BASE}/cart/merge`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...getAuthHeader() },
+        body: "{}",
+      }).catch(() => {});
     },
     [],
   );
@@ -69,13 +74,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch(`${API_BASE}/auth/me`, {
         credentials: "include",
+        headers: { ...getAuthHeader() },
       });
       if (res.ok) {
         const data = (await res.json()) as User;
         setUser(data);
         localStorage.setItem("user", JSON.stringify(data));
       } else if (res.status === 401) {
-        logout();
+        // Clear stale state without navigating — let route guards handle redirects.
+        // The httpOnly cookies are cleared by the logout/refresh proxy routes.
+        localStorage.removeItem("user");
+        setUser(null);
       }
     } catch {
       // network error — keep localStorage user
@@ -109,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        ...getAuthHeader(),
       },
       body: JSON.stringify(data),
     });

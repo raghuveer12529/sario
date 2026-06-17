@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
@@ -17,7 +17,7 @@ interface Variant {
 
 export function AddToCart({ variants }: { variants: Variant[] }) {
   const router = useRouter();
-  
+
   // Find first available variant or default to first
   const firstAvailable = variants.find(v => (v.inventory.quantity - v.inventory.reservedQuantity) > 0) || variants[0];
   const [selectedId, setSelectedId] = useState<string>(firstAvailable?.id ?? "");
@@ -42,19 +42,12 @@ export function AddToCart({ variants }: { variants: Variant[] }) {
   const doAdd = async (): Promise<boolean> => {
     if (!selectedId) return false;
     setError(null);
-    try {
-      await apiFetch("/cart/items", {
-        method: "POST",
-        body: JSON.stringify({ variantId: selectedId, quantity: 1 }),
-      });
-      return true;
-    } catch (err: any) {
-      if (err.message?.includes("Unauthorized") || err.status === 401) {
-        router.push("/auth");
-        return false;
-      }
-      throw err;
-    }
+    // Works for guests too — the cart is anonymous until login, then merged.
+    await apiFetch("/cart/items", {
+      method: "POST",
+      body: JSON.stringify({ variantId: selectedId, quantity: 1 }),
+    });
+    return true;
   };
 
   const handleAdd = async () => {
@@ -174,7 +167,7 @@ export function AddToCart({ variants }: { variants: Variant[] }) {
 
       {/* Inline error */}
       {error && (
-        <div className="flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">
+        <div role="alert" aria-live="assertive" className="flex items-start gap-3 rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-600">
           <svg className="h-4 w-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
           </svg>

@@ -134,23 +134,31 @@ export function ProductForm({ initialValues, productId }: Props) {
 
   const uploadFile = async (file: File, createdProductId: string, isPrimary: boolean): Promise<ProductImage | null> => {
     try {
-      const { presignedUrl, publicUrl } = await apiFetch<{ presignedUrl: string; publicUrl: string; key: string }>(
-        `/vendors/me/products/${createdProductId}/images/presign`,
-        {
-          method: "POST",
-          body: JSON.stringify({ filename: file.name, contentType: file.type }),
-        }
-      );
-
-      await fetch(presignedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
+      const params = await apiFetch<{
+        uploadUrl: string;
+        apiKey: string;
+        timestamp: number;
+        signature: string;
+        folder: string;
+      }>(`/vendors/me/products/${createdProductId}/images/presign`, {
+        method: "POST",
+        body: JSON.stringify({ filename: file.name, contentType: file.type }),
       });
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("api_key", params.apiKey);
+      formData.append("timestamp", String(params.timestamp));
+      formData.append("signature", params.signature);
+      formData.append("folder", params.folder);
+
+      const cloudRes = await fetch(params.uploadUrl, { method: "POST", body: formData });
+      if (!cloudRes.ok) throw new Error("Cloudinary upload failed");
+      const { secure_url } = await cloudRes.json() as { secure_url: string };
 
       return await apiFetch<ProductImage>(`/vendors/me/products/${createdProductId}/images`, {
         method: "POST",
-        body: JSON.stringify({ url: publicUrl, isPrimary }),
+        body: JSON.stringify({ url: secure_url, isPrimary }),
       });
     } catch {
       return null;

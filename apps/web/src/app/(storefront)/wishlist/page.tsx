@@ -63,7 +63,7 @@ export default function WishlistPage() {
     setLoading(true);
     Promise.all(
       ids.map((id) =>
-        fetch(`${API_BASE}/storefront/products/${id}`)
+        fetch(`${API_BASE}/catalog/products/id/${id}`)
           .then((r) => (r.ok ? (r.json() as Promise<Product>) : null))
           .catch(() => null)
       )

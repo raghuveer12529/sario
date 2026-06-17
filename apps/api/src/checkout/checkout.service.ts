@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { PaymentStatus, OrderStatus } from "@sario/db";
+import { extractInclusiveGstPaise } from "@sario/shared";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { CartService } from "../cart/cart.service.js";
 import { RazorpayService } from "../payment/razorpay.service.js";
@@ -15,7 +16,8 @@ import { randomUUID } from "crypto";
 
 export interface CheckoutInitDto {
   addressId: string;
-  couponCode?: string;
+  /** Client-supplied key (Idempotency-Key header) so retries don't duplicate orders. */
+  idempotencyKey?: string;
 }
 
 @Injectable()
@@ -30,7 +32,25 @@ export class CheckoutService {
   ) {}
 
   async initiate(userId: string, dto: CheckoutInitDto) {
-    const cart = await this.cartService.getCart(userId);
+    const idempotencyKey = dto.idempotencyKey ?? randomUUID();
+
+    // Idempotency: a retry with the same key returns the original checkout instead of
+    // re-reserving stock and creating duplicate orders.
+    const existing = await this.prisma.payment.findUnique({ where: { idempotencyKey } });
+    if (existing) {
+      const priorOrders = await this.prisma.order.findMany({
+        where: { userId, checkoutGroupId: idempotencyKey },
+        select: { id: true },
+      });
+      return {
+        razorpayOrderId: existing.razorpayOrderId,
+        amountPaise: existing.amountPaise,
+        currency: "INR",
+        orderIds: priorOrders.map((o) => o.id),
+      };
+    }
+
+    const cart = await this.cartService.getCart({ userId });
     if (!cart.items.length) throw new BadRequestException("Cart is empty.");
 
     const address = await this.prisma.address.findUnique({
@@ -38,33 +58,45 @@ export class CheckoutService {
     });
     if (!address) throw new NotFoundException("Address not found.");
 
-    // Validate stock
-    for (const item of cart.items) {
-      const available =
-        (item.variant.inventory?.quantity ?? 0) -
-        (item.variant.inventory?.reservedQuantity ?? 0);
-      if (available < item.quantity) {
-        throw new BadRequestException(
-          `"${item.variant.product.name}" has only ${available} unit(s) available.`,
-        );
-      }
+    // Guard against stale cart prices: if a vendor changed a price since the item was
+    // added, refresh the cart to the live price and make the buyer re-confirm — never
+    // silently charge a price different from what was shown.
+    const stale = cart.items.filter((i) => i.pricePaise !== i.variant.pricePaise);
+    if (stale.length) {
+      await Promise.all(
+        stale.map((i) =>
+          this.prisma.cartItem.update({
+            where: { cartId_variantId: { cartId: i.cartId, variantId: i.variantId } },
+            data: { pricePaise: i.variant.pricePaise },
+          }),
+        ),
+      );
+      throw new BadRequestException("Some prices changed since you added them. Please review your cart.");
     }
 
-    // Reserve inventory
-    await Promise.all(
-      cart.items.map((item) =>
-        this.prisma.inventory.update({
-          where: { variantId: item.variantId },
-          data: { reservedQuantity: { increment: item.quantity } },
-        }),
-      ),
-    );
+    // Atomically reserve inventory. The conditional UPDATE (quantity - reserved >= qty)
+    // executes as a single locked statement per row, so two concurrent checkouts cannot
+    // both reserve the last unit. If any item is short, the transaction rolls back and
+    // every prior reservation in this checkout is released.
+    await this.prisma.$transaction(async (tx) => {
+      for (const item of cart.items) {
+        const affected = await tx.$executeRaw`
+          UPDATE "Inventory"
+          SET "reservedQuantity" = "reservedQuantity" + ${item.quantity}
+          WHERE "variantId" = ${item.variantId}
+            AND "quantity" - "reservedQuantity" >= ${item.quantity}
+        `;
+        if (affected === 0) {
+          throw new BadRequestException(
+            `"${item.variant.product.name}" does not have enough stock.`,
+          );
+        }
+      }
+    });
 
     const subtotalPaise = cart.items.reduce((s, i) => s + i.pricePaise * i.quantity, 0);
     const shippingPaise = subtotalPaise >= 200000 ? 0 : 5000;
     const totalPaise = subtotalPaise + shippingPaise;
-    const idempotencyKey = randomUUID();
-    const checkoutNote = `checkout:${idempotencyKey}`;
 
     // Group items by vendor
     const vendorGroups = new Map<string, typeof cart.items>();
@@ -98,8 +130,10 @@ export class CheckoutService {
             status: OrderStatus.PENDING,
             subtotalPaise: vendorSubtotal,
             shippingPaise: orderShippingPaise,
+            // Prices are GST-inclusive; record the embedded tax for invoicing (total unchanged).
+            taxPaise: extractInclusiveGstPaise(vendorSubtotal),
             totalPaise: vendorSubtotal + orderShippingPaise,
-            notes: checkoutNote,
+            checkoutGroupId: idempotencyKey,
             items: {
               create: items.map((i) => ({
                 variantId: i.variantId,
@@ -173,11 +207,12 @@ export class CheckoutService {
     if (event.event === "payment.captured") {
       await this.confirmPayment(entity.order_id, entity.id);
     } else if (event.event === "payment.failed") {
-      await this.prisma.payment.updateMany({
+      const payment = await this.prisma.payment.findUnique({
         where: { razorpayOrderId: entity.order_id },
-        data: { status: PaymentStatus.FAILED, failureReason: "Payment failed via webhook" },
       });
-      await this.releaseInventoryForRazorpayOrder(entity.order_id);
+      if (payment && payment.status !== PaymentStatus.CAPTURED) {
+        await this.failAndRelease(payment.id, entity.order_id, "Payment failed via webhook");
+      }
     }
   }
 
@@ -213,8 +248,8 @@ export class CheckoutService {
     const anchorOrder = await this.prisma.order.findUnique({ where: { id: payment.orderId } });
     if (!anchorOrder) return;
 
-    const orderGroupWhere = anchorOrder.notes
-      ? { userId: anchorOrder.userId, notes: anchorOrder.notes }
+    const orderGroupWhere = anchorOrder.checkoutGroupId
+      ? { userId: anchorOrder.userId, checkoutGroupId: anchorOrder.checkoutGroupId }
       : { id: anchorOrder.id };
 
     await this.prisma.order.updateMany({
@@ -225,8 +260,26 @@ export class CheckoutService {
       data: { status: OrderStatus.CONFIRMED, confirmedAt: new Date() },
     });
 
+    // Convert the reservation into a real stock decrement. The CAPTURED guard above
+    // makes this run exactly once per payment, so it is idempotent.
+    const groupOrders = await this.prisma.order.findMany({
+      where: orderGroupWhere,
+      include: { items: { select: { variantId: true, quantity: true } } },
+    });
+    for (const item of groupOrders.flatMap((o) => o.items)) {
+      await this.prisma.inventory
+        .update({
+          where: { variantId: item.variantId },
+          data: {
+            quantity: { decrement: item.quantity },
+            reservedQuantity: { decrement: item.quantity },
+          },
+        })
+        .catch(() => null);
+    }
+
     // Clear cart
-    await this.cartService.clearCart(anchorOrder.userId);
+    await this.cartService.clearCart({ userId: anchorOrder.userId });
 
     this.logger.log(`Payment confirmed: ${razorpayOrderId} → orders confirmed for user ${anchorOrder.userId}`);
   }
@@ -239,8 +292,8 @@ export class CheckoutService {
     if (!payment) return;
 
     const orders = await this.prisma.order.findMany({
-      where: payment.order.notes
-        ? { userId: payment.order.userId, notes: payment.order.notes }
+      where: payment.order.checkoutGroupId
+        ? { userId: payment.order.userId, checkoutGroupId: payment.order.checkoutGroupId }
         : { id: payment.order.id },
       include: { items: true },
     });
@@ -255,7 +308,9 @@ export class CheckoutService {
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async reconcileOrphanPayments() {
-    const cutoff = new Date(Date.now() - 10 * 60 * 1000);
+    const now = Date.now();
+    const cutoff = new Date(now - 10 * 60 * 1000);
+    const abandonCutoff = new Date(now - 30 * 60 * 1000);
     const orphans = await this.prisma.payment.findMany({
       where: { status: PaymentStatus.CREATED, createdAt: { lt: cutoff } },
     });
@@ -266,14 +321,35 @@ export class CheckoutService {
         if (rz.status === "captured") {
           await this.confirmPayment(p.razorpayOrderId, p.razorpayOrderId);
         } else if (rz.status === "failed") {
-          await this.prisma.payment.update({
-            where: { id: p.id },
-            data: { status: PaymentStatus.FAILED, failureReason: "Reconciled as failed" },
-          });
+          await this.failAndRelease(p.id, p.razorpayOrderId, "Reconciled as failed");
+        } else if (p.createdAt < abandonCutoff) {
+          // Still unpaid 30+ min after creation — treat as abandoned and free the hold
+          await this.failAndRelease(p.id, p.razorpayOrderId, "Abandoned checkout — reservation released");
         }
       } catch (err) {
         this.logger.error(`Reconciliation failed for payment ${p.id}:`, err);
       }
     }
+  }
+
+  /** Mark a payment failed, release its reserved stock, and cancel the pending orders. */
+  private async failAndRelease(paymentId: string, razorpayOrderId: string, reason: string) {
+    await this.releaseInventoryForRazorpayOrder(razorpayOrderId);
+    await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: { status: PaymentStatus.FAILED, failureReason: reason },
+    });
+
+    const payment = await this.prisma.payment.findUnique({ where: { id: paymentId } });
+    if (!payment) return;
+    const anchor = await this.prisma.order.findUnique({ where: { id: payment.orderId } });
+    if (!anchor) return;
+    const where = anchor.checkoutGroupId
+      ? { userId: anchor.userId, checkoutGroupId: anchor.checkoutGroupId }
+      : { id: anchor.id };
+    await this.prisma.order.updateMany({
+      where: { ...where, status: OrderStatus.PENDING },
+      data: { status: OrderStatus.CANCELLED, cancelledAt: new Date(), cancellationReason: reason },
+    });
   }
 }

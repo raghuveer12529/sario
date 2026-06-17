@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { AddToCart } from "./add-to-cart";
 import { ImageGallery } from "./image-gallery";
 import { WeaverCard } from "./weaver-card";
+import { WishlistButton } from "@/app/(storefront)/wishlist-button";
 
 interface ProductDetail {
   id: string;
@@ -117,8 +118,30 @@ export default async function ProductPage({ params }: { params: { slug: string }
     0,
   );
 
+  const minPricePaise = Math.min(...product.variants.map((v) => v.pricePaise));
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    description: product.description,
+    image: product.images.map((i) => i.url),
+    category: product.category.name,
+    brand: { "@type": "Brand", name: product.vendor.businessName },
+    offers: {
+      "@type": "Offer",
+      priceCurrency: "INR",
+      price: (minPricePaise / 100).toFixed(2),
+      availability: totalStock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+    },
+  };
+
   return (
     <main className="bg-[#F5F5F5] min-h-screen">
+      <script
+        type="application/ld+json"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       {/* Breadcrumb */}
       <div className="bg-white border-b border-[#F0F0F0] px-4 py-2.5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl flex items-center gap-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[#9B9B9B]">
@@ -150,7 +173,13 @@ export default async function ProductPage({ params }: { params: { slug: string }
                   </span>
                 )}
               </div>
-              <h1 className="text-2xl font-extrabold text-[#1A1A1A] leading-tight">{product.name}</h1>
+              <div className="flex items-start justify-between gap-3">
+                <h1 className="text-2xl font-extrabold text-[#1A1A1A] leading-tight">{product.name}</h1>
+                <WishlistButton
+                  productId={product.id}
+                  className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full border border-[#F0F0F0] bg-white shadow-sm transition-all hover:border-primary hover:scale-110 active:scale-95"
+                />
+              </div>
               <div className="mt-3 flex items-center gap-2 text-xs">
                 <span className="text-[#696969]">Sold by</span>
                 <Link href={`/weavers/${product.vendor.slug}` as Route} className="font-medium hover:underline text-[#C9A96E]">

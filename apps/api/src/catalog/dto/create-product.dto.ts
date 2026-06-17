@@ -6,6 +6,8 @@ import { Type } from "class-transformer";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class CreateVariantDto {
+  @ApiPropertyOptional({ description: "Existing variant id — present when editing." })
+  @IsString() @IsOptional() id?: string;
   @ApiProperty() @IsString() name: string;
   @ApiProperty() @IsString() sku: string;
   @ApiPropertyOptional() @IsString() @IsOptional() color?: string;
