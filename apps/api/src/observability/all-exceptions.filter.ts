@@ -25,6 +25,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     reply
       .status(status)
-      .send(typeof body === "string" ? { statusCode: status, message: body } : { statusCode: status, ...body });
+      .send(typeof body === "string" ? { statusCode: status, message: body } : { ...body, statusCode: status });
   }
 }

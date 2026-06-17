@@ -27,4 +27,13 @@ describe("AllExceptionsFilter", () => {
     filter.catch(new Error("boom"), mockHost(jest.fn()));
     expect(capture).toHaveBeenCalledTimes(1);
   });
+
+  it("treats a thrown non-Error value as a reported 500", () => {
+    const capture = jest.fn();
+    const filter = new AllExceptionsFilter(capture);
+    const send = jest.fn();
+    filter.catch("a bare string", mockHost(send));
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 500, message: "Internal server error" }));
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
 });
