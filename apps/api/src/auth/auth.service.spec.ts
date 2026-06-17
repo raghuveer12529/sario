@@ -325,19 +325,14 @@ describe("AuthService", () => {
       mockPrisma.refreshToken.create.mockResolvedValue({});
     });
 
-    it("auto-registers and returns tokens when email is new", async () => {
+    it("rejects an unknown email instead of auto-registering", async () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
-      mockBcrypt.hash.mockResolvedValue("hashed-pw" as never);
-      mockPrisma.user.create.mockResolvedValue(fakeUser);
 
-      const result = await service.login(email, password);
+      await expect(service.login(email, password)).rejects.toThrow(UnauthorizedException);
 
-      expect(mockPrisma.user.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ email, isVerified: true }) as object }),
-      );
-      expect(result.accessToken).toBe("signed-access-token");
-      expect(result.user.email).toBe(email);
-      expect((result.user as { passwordHash?: unknown }).passwordHash).toBeUndefined();
+      // login must never create a user — registration is a separate flow.
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
+      expect(mockPrisma.user.upsert).not.toHaveBeenCalled();
     });
 
     it("returns tokens when credentials are correct", async () => {
