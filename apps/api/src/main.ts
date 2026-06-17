@@ -8,6 +8,8 @@ import { ValidationPipe, VersioningType } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import helmet from "@fastify/helmet";
 import { AppModule } from "./app.module.js";
+import { initSentry } from "./observability/sentry.js";
+import { AllExceptionsFilter } from "./observability/all-exceptions.filter.js";
 
 // BigInt fields (e.g. monthlyGmvPaise on Vendor) are not JSON-serializable by default.
 // Serialize as string to avoid precision loss on large paise values.
@@ -16,6 +18,8 @@ import { AppModule } from "./app.module.js";
 };
 
 async function bootstrap() {
+  initSentry();
+
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ logger: true }),
@@ -46,6 +50,9 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Global exception filter (logs + reports 5xx to Sentry)
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   // Swagger (dev only)
   if (process.env["NODE_ENV"] !== "production") {

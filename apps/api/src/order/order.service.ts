@@ -3,12 +3,14 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from "@nestjs/common";
 import { OrderStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { ShiprocketService } from "../shiprocket/shiprocket.service.js";
 import { VendorService } from "../vendor/vendor.service.js";
 import { ReturnsService } from "../returns/returns.service.js";
+import { captureException } from "../observability/sentry.js";
 
 const BUYER_CANCELLABLE: readonly OrderStatus[] = [
   OrderStatus.PENDING,
@@ -21,6 +23,8 @@ const VENDOR_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
 
 @Injectable()
 export class OrderService {
+  private readonly logger = new Logger(OrderService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly shiprocket: ShiprocketService,
@@ -83,7 +87,11 @@ export class OrderService {
             where: { variantId: item.variantId },
             data: { reservedQuantity: { decrement: item.quantity } },
           })
-          .catch(() => null);
+          .catch((err) => {
+            this.logger.error(`Inventory write failed for variant ${item.variantId}`, err);
+            captureException(err, { variantId: item.variantId });
+            return null;
+          });
       }
     }
 

@@ -1,11 +1,14 @@
-import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from "@nestjs/common";
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException, Logger } from "@nestjs/common";
 import { OrderStatus, RefundStatus, PaymentStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { RazorpayService } from "../payment/razorpay.service.js";
 import { VendorService } from "../vendor/vendor.service.js";
+import { captureException } from "../observability/sentry.js";
 
 @Injectable()
 export class ReturnsService {
+  private readonly logger = new Logger(ReturnsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly razorpay: RazorpayService,
@@ -121,7 +124,11 @@ export class ReturnsService {
           where: { variantId: item.variantId },
           data: { quantity: { increment: item.quantity } },
         })
-        .catch(() => null);
+        .catch((err) => {
+          this.logger.error(`Inventory write failed for variant ${item.variantId}`, err);
+          captureException(err, { variantId: item.variantId });
+          return null;
+        });
     }
 
     return refund;

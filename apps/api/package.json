@@ -29,6 +29,7 @@
     "@nestjs/throttler": "^6.2.0",
     "@sario/db": "workspace:*",
     "@sario/shared": "workspace:*",
+    "@sentry/node": "^10.58.0",
     "bcrypt": "^5.1.1",
     "bullmq": "^5.12.0",
     "class-transformer": "^0.5.1",

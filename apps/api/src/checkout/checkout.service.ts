@@ -12,6 +12,7 @@ import { PrismaService } from "../prisma/prisma.service.js";
 import { CartService } from "../cart/cart.service.js";
 import { RazorpayService } from "../payment/razorpay.service.js";
 import { RedisService } from "../redis/redis.service.js";
+import { captureException } from "../observability/sentry.js";
 import { randomUUID } from "crypto";
 
 export interface CheckoutInitDto {
@@ -275,7 +276,11 @@ export class CheckoutService {
             reservedQuantity: { decrement: item.quantity },
           },
         })
-        .catch(() => null);
+        .catch((err) => {
+          this.logger.error(`Inventory write failed for variant ${item.variantId}`, err);
+          captureException(err, { variantId: item.variantId });
+          return null;
+        });
     }
 
     // Clear cart
@@ -302,7 +307,11 @@ export class CheckoutService {
       await this.prisma.inventory.update({
         where: { variantId: item.variantId },
         data: { reservedQuantity: { decrement: item.quantity } },
-      }).catch(() => null);
+      }).catch((err) => {
+        this.logger.error(`Inventory write failed for variant ${item.variantId}`, err);
+        captureException(err, { variantId: item.variantId });
+        return null;
+      });
     }
   }
 
