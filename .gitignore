@@ -49,3 +49,5 @@ sario-master-plan.md
 
 # Cloudflare tunnel logs/pids (local dev sharing)
 .tunnel-logs/
+tests/
+.claude/
