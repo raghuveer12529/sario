@@ -1,10 +1,9 @@
-import { Controller, Get, Param, Query, ParseIntPipe, DefaultValuePipe, Version } from "@nestjs/common";
+import { Controller, Get, Param, Query, ParseIntPipe, DefaultValuePipe } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiQuery } from "@nestjs/swagger";
 import { StorefrontService } from "./storefront.service.js";
 
 @ApiTags("Storefront")
-@Controller("catalog")
-@Version("1")
+@Controller({ path: "catalog", version: "1" })
 export class StorefrontController {
   constructor(private readonly storefrontService: StorefrontService) {}
 
@@ -26,33 +25,56 @@ export class StorefrontController {
   @ApiQuery({ name: "categoryId", required: false })
   @ApiQuery({ name: "region", required: false })
   @ApiQuery({ name: "fabric", required: false })
+  @ApiQuery({ name: "occasion", required: false })
   @ApiQuery({ name: "minPrice", required: false })
   @ApiQuery({ name: "maxPrice", required: false })
+  @ApiQuery({ name: "vendorId", required: false })
   @ApiQuery({ name: "sort", required: false, description: "e.g. minPricePaise:asc" })
   @ApiQuery({ name: "page", required: false })
   @ApiQuery({ name: "limit", required: false })
   search(
     @Query("q") q?: string,
     @Query("categoryId") categoryId?: string,
+    @Query("vendorId") vendorId?: string,
     @Query("region") region?: string,
     @Query("fabric") fabric?: string,
+    @Query("occasion") occasion?: string,
     @Query("minPrice", new DefaultValuePipe(0), ParseIntPipe) minPrice = 0,
-    @Query("maxPrice") maxPrice?: string,
+    @Query("maxPrice", new DefaultValuePipe(0), ParseIntPipe) maxPrice = 0,
     @Query("sort") sort?: string,
     @Query("page", new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query("limit", new DefaultValuePipe(20), ParseIntPipe) limit = 20,
   ) {
     return this.storefrontService.searchProducts({
-      q, categoryId, region, fabric,
-      minPrice: minPrice || undefined,
-      maxPrice: maxPrice ? parseInt(maxPrice) : undefined,
-      sort, page, limit,
+      ...(q ? { q } : {}),
+      ...(categoryId ? { categoryId } : {}),
+      ...(vendorId ? { vendorId } : {}),
+      ...(region ? { region } : {}),
+      ...(fabric ? { fabric } : {}),
+      ...(occasion ? { occasion } : {}),
+      ...(minPrice ? { minPrice } : {}),
+      ...(maxPrice ? { maxPrice } : {}),
+      ...(sort ? { sort } : {}),
+      page,
+      limit,
     });
+  }
+
+  @Get("products/id/:id")
+  @ApiOperation({ summary: "Get minimal product info by ID (used by wishlist)" })
+  getProductById(@Param("id") id: string) {
+    return this.storefrontService.getProductById(id);
   }
 
   @Get("products/:slug")
   @ApiOperation({ summary: "Get product detail by slug" })
   getProduct(@Param("slug") slug: string) {
     return this.storefrontService.getProductBySlug(slug);
+  }
+
+  @Get("vendors/:slug")
+  @ApiOperation({ summary: "Get approved vendor by slug" })
+  getVendorBySlug(@Param("slug") slug: string) {
+    return this.storefrontService.getVendorBySlug(slug);
   }
 }

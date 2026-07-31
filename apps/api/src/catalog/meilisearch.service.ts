@@ -11,8 +11,13 @@ interface SearchableProduct {
   tags: string[];
   categoryId: string;
   vendorId: string;
+  vendorName: string;
+  vendorSlug: string;
   minPricePaise: number;
+  mrpPaise?: number;
+  searchIndexedAt?: number;
   primaryImageUrl?: string;
+  occasion: string[];
 }
 
 @Injectable()
@@ -45,7 +50,7 @@ export class MeilisearchService implements OnModuleInit {
       q: query,
       limit,
       offset,
-      facets: ["region", "fabric", "categoryId"],
+      facets: ["region", "fabric", "categoryId", "occasion"],
       ...filters,
     };
     return this.request<{ hits: SearchableProduct[]; estimatedTotalHits: number }>(
@@ -58,9 +63,9 @@ export class MeilisearchService implements OnModuleInit {
   private async setupIndex(): Promise<void> {
     try {
       await this.request("PATCH", `/indexes/${this.index}/settings`, {
-        searchableAttributes: ["name", "description", "fabric", "region", "tags"],
-        filterableAttributes: ["categoryId", "vendorId", "region", "fabric", "minPricePaise"],
-        sortableAttributes: ["minPricePaise"],
+        searchableAttributes: ["name", "description", "fabric", "region", "tags", "occasion"],
+        filterableAttributes: ["categoryId", "vendorId", "region", "fabric", "minPricePaise", "occasion"],
+        sortableAttributes: ["minPricePaise", "searchIndexedAt"],
         typoTolerance: { enabled: true, minWordSizeForTypos: { oneTypo: 4, twoTypos: 8 } },
         synonyms: {
           saree: ["saari", "sari", "seere", "cheera"],
@@ -74,14 +79,15 @@ export class MeilisearchService implements OnModuleInit {
   }
 
   private async request<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${this.host}${path}`, {
+    const init: RequestInit = {
       method,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.apiKey}`,
       },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    };
+    const res = await fetch(`${this.host}${path}`, init);
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`Meilisearch ${method} ${path} → ${res.status}: ${text}`);

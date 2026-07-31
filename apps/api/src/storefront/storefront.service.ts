@@ -1,20 +1,71 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { ProductStatus } from "@sario/db";
+import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
+import { ProductStatus, VendorStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { MeilisearchService } from "../catalog/meilisearch.service.js";
+import { RedisService } from "../redis/redis.service.js";
 
 @Injectable()
 export class StorefrontService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly search: MeilisearchService,
+    private readonly redis: RedisService,
   ) {}
+
+  private sanitizeFilterValue(value: string): string {
+    if (/["\\]/.test(value)) {
+      throw new BadRequestException(`Invalid filter value: "${value}"`);
+    }
+    return value;
+  }
+
+  private serializeForCache(value: unknown): string {
+    return JSON.stringify(value, (_key, val: unknown) =>
+      typeof val === "bigint" ? val.toString() : val,
+    );
+  }
+
+  private async getAllCategories() {
+    const cacheKey = "category:all";
+    let cached: string | null = null;
+    try { cached = await this.redis.get(cacheKey); } catch { /* Redis down, fallthrough */ }
+    if (cached) {
+      try { return JSON.parse(cached) as { id: string; parentId: string | null; isActive: boolean }[]; } catch { /* corrupt, fallthrough */ }
+    }
+
+    const categories = await this.prisma.category.findMany({
+      select: { id: true, parentId: true, isActive: true },
+    });
+    try { await this.redis.setex(cacheKey, 300, JSON.stringify(categories)); } catch { /* non-fatal */ }
+    return categories;
+  }
+
+  private async getDescendantCategoryIds(categoryId: string): Promise<string[]> {
+    const all = await this.getAllCategories();
+    const result: string[] = [];
+    const visited = new Set<string>([categoryId]);
+    const queue = [categoryId];
+    while (queue.length) {
+      const current = queue.shift();
+      if (current === undefined) break;
+      const children = all.filter((c) => c.parentId === current && c.isActive);
+      for (const child of children) {
+        if (visited.has(child.id)) continue;
+        visited.add(child.id);
+        result.push(child.id);
+        queue.push(child.id);
+      }
+    }
+    return result;
+  }
 
   async searchProducts(opts: {
     q?: string;
     categoryId?: string;
+    vendorId?: string;
     region?: string;
     fabric?: string;
+    occasion?: string;
     minPrice?: number;
     maxPrice?: number;
     sort?: string;
@@ -22,17 +73,34 @@ export class StorefrontService {
     limit: number;
   }) {
     const filters: string[] = [];
-    if (opts.categoryId) filters.push(`categoryId = "${opts.categoryId}"`);
-    if (opts.region) filters.push(`region = "${opts.region}"`);
-    if (opts.fabric) filters.push(`fabric = "${opts.fabric}"`);
+    if (opts.categoryId) {
+      const descendantIds = await this.getDescendantCategoryIds(opts.categoryId);
+      const allIds = [opts.categoryId, ...descendantIds];
+      filters.push(
+        allIds.length === 1
+          ? `categoryId = "${allIds[0]}"`
+          : `categoryId IN [${allIds.map((id) => `"${id}"`).join(", ")}]`,
+      );
+    }
+    if (opts.vendorId) filters.push(`vendorId = "${this.sanitizeFilterValue(opts.vendorId)}"`);
+    if (opts.region)   filters.push(`region = "${this.sanitizeFilterValue(opts.region)}"`);
+    if (opts.fabric)   filters.push(`fabric = "${this.sanitizeFilterValue(opts.fabric)}"`);
+    if (opts.occasion) filters.push(`occasion = "${this.sanitizeFilterValue(opts.occasion)}"`);
     if (opts.minPrice) filters.push(`minPricePaise >= ${opts.minPrice}`);
     if (opts.maxPrice) filters.push(`minPricePaise <= ${opts.maxPrice}`);
+
+    const SORT_MAP: Record<string, string> = {
+      price_asc: "minPricePaise:asc",
+      price_desc: "minPricePaise:desc",
+      newest: "searchIndexedAt:desc",
+    };
+    const meiliSort = opts.sort ? SORT_MAP[opts.sort] : undefined;
 
     return this.search.search(
       opts.q ?? "",
       {
         filter: filters.length ? filters.join(" AND ") : undefined,
-        sort: opts.sort ? [opts.sort] : undefined,
+        sort: meiliSort ? [meiliSort] : undefined,
       },
       opts.page,
       opts.limit,
@@ -40,6 +108,13 @@ export class StorefrontService {
   }
 
   async getProductBySlug(slug: string) {
+    const cacheKey = `product:slug:${slug}`;
+    let cached: string | null = null;
+    try { cached = await this.redis.get(cacheKey); } catch { /* Redis down, fallthrough */ }
+    if (cached) {
+      try { return JSON.parse(cached) as Record<string, unknown>; } catch { /* corrupt, fallthrough */ }
+    }
+
     const product = await this.prisma.product.findUnique({
       where: { slug, status: ProductStatus.APPROVED, deletedAt: null },
       include: {
@@ -60,15 +135,56 @@ export class StorefrontService {
     });
 
     if (!product) throw new NotFoundException("Product not found.");
+    try { await this.redis.setex(cacheKey, 60, this.serializeForCache(product)); } catch { /* non-fatal */ }
+    return product;
+  }
+
+  async getProductById(id: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id, status: ProductStatus.APPROVED, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        images: { orderBy: { sortOrder: "asc" }, select: { url: true, altText: true } },
+        variants: {
+          where: { isActive: true },
+          select: { pricePaise: true, mrpPaise: true },
+          take: 1,
+          orderBy: { pricePaise: "asc" },
+        },
+      },
+    });
+    if (!product) throw new NotFoundException("Product not found.");
     return product;
   }
 
   async getCategories() {
     return this.prisma.category.findMany({
       where: { isActive: true, parentId: null },
-      include: { children: { where: { isActive: true } } },
+      include: {
+        children: {
+          where: { isActive: true },
+          orderBy: { sortOrder: "asc" },
+          include: {
+            children: {
+              where: { isActive: true },
+              orderBy: { sortOrder: "asc" },
+            },
+          },
+        },
+      },
       orderBy: { sortOrder: "asc" },
     });
+  }
+
+  async getVendorBySlug(slug: string) {
+    const vendor = await this.prisma.vendor.findUnique({
+      where: { slug, status: VendorStatus.APPROVED, deletedAt: null },
+      select: { id: true, businessName: true, slug: true, about: true, bannerUrl: true },
+    });
+    if (!vendor) throw new NotFoundException("Vendor not found.");
+    return vendor;
   }
 
   async getFeaturedProducts(limit = 12) {

@@ -73,23 +73,26 @@ enum OtpPurpose {
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 model User {
-  id          String    @id @default(cuid())
-  phone       String    @unique
-  email       String?   @unique
-  name        String?
-  avatarUrl   String?
-  isVerified  Boolean   @default(false)
+  id           String    @id @default(cuid())
+  phone        String?   @unique
+  email        String?   @unique
+  name         String?
+  avatarUrl    String?
+  passwordHash String?
+  isVerified   Boolean   @default(false)
   // rolling trust score 0–100; used for COD eligibility
-  trustScore  Int       @default(50)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  trustScore   Int       @default(50)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   addresses     Address[]
   cart          Cart?
   orders        Order[]
   reviews       Review[]
   refreshTokens RefreshToken[]
+  verificationTokens VerificationToken[]
+  vendor        Vendor?
 
   @@index([phone])
   @@index([email])
@@ -123,6 +126,27 @@ model RefreshToken {
   @@index([expiresAt])
 }
 
+enum VerificationTokenType {
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+}
+
+// Single-use, hashed tokens for password reset and email verification links.
+model VerificationToken {
+  id        String                @id @default(cuid())
+  userId    String
+  tokenHash String                @unique
+  type      VerificationTokenType
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime              @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([expiresAt])
+}
+
 // ─── Vendor ───────────────────────────────────────────────────────────────────
 
 model Vendor {
@@ -139,6 +163,8 @@ model Vendor {
   // commission in basis points: 1500 = 15%
   commissionBps  Int          @default(1500)
   monthlyGmvPaise BigInt      @default(0)
+  razorpayAccountId String?
+  userId         String?      @unique
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   deletedAt      DateTime?
@@ -146,8 +172,11 @@ model Vendor {
   bankAccounts VendorBankAccount[]
   products     Product[]
   orders       Order[]
+  payouts      Payout[]
+  user         User?        @relation(fields: [userId], references: [id])
 
   @@index([status])
+  @@index([userId])
   @@index([deletedAt])
 }
 
@@ -204,6 +233,7 @@ model Product {
   giTag            String?
   status           ProductStatus @default(DRAFT)
   tags             String[]
+  occasion         String[]
   hsnCode          String?
   qualityScore     Int?          // 0–100, set by admin/ML
   searchIndexedAt  DateTime?
@@ -286,11 +316,14 @@ model Inventory {
 
 model Cart {
   id        String   @id @default(cuid())
-  userId    String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  // Exactly one of userId / anonymousId is set. Anonymous carts (guest checkout) are
+  // keyed by a cart_id cookie and merged into the user cart on login.
+  userId      String?  @unique
+  anonymousId String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
   items CartItem[]
 }
 
@@ -381,6 +414,9 @@ model Order {
   totalPaise          Int
   couponId            String?
   couponDiscountPaise Int         @default(0)
+  // Groups the per-vendor orders created by one checkout, so a shared payment can be
+  // located from any sub-order. Stable — unlike `notes`, which holds free-text reasons.
+  checkoutGroupId     String?
   notes               String?
   cancellationReason  String?
   cancelledAt         DateTime?
@@ -407,6 +443,7 @@ model Order {
   @@index([vendorId])
   @@index([status])
   @@index([createdAt])
+  @@index([checkoutGroupId])
 }
 
 model OrderItem {
@@ -448,6 +485,34 @@ model Payment {
   refunds Refund[]
 
   @@index([orderId])
+  @@index([status])
+}
+
+// ─── Payout ───────────────────────────────────────────────────────────────────
+
+enum PayoutStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+model Payout {
+  id                 String       @id @default(cuid())
+  orderId            String       @unique
+  vendorId           String
+  paymentId          String
+  grossPaise         Int
+  commissionPaise    Int
+  netPaise           Int
+  razorpayTransferId String?
+  status             PayoutStatus @default(PENDING)
+  failureReason      String?
+  createdAt          DateTime     @default(now())
+  processedAt        DateTime?
+
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+
+  @@index([vendorId])
   @@index([status])
 }
 

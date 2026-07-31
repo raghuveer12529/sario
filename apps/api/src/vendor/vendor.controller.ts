@@ -1,15 +1,14 @@
-import { Controller, Post, Get, Patch, Body, Param, UseGuards, Version } from "@nestjs/common";
+import { Controller, Post, Get, Patch, Body, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { VendorService } from "./vendor.service.js";
 import { ApplyVendorDto } from "./dto/apply-vendor.dto.js";
 import { UpdateVendorDto } from "./dto/update-vendor.dto.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { JwtUserAuthGuard } from "../auth/guards/jwt-user-auth.guard.js";
 import { CurrentUser, type CurrentUserPayload } from "../auth/decorators/current-user.decorator.js";
 
 @ApiTags("Vendor")
-@Controller("vendors")
-@Version("1")
-@UseGuards(JwtAuthGuard)
+@Controller({ path: "vendors", version: "1" })
+@UseGuards(JwtUserAuthGuard)
 @ApiBearerAuth()
 export class VendorController {
   constructor(private readonly vendorService: VendorService) {}
@@ -31,5 +30,11 @@ export class VendorController {
   updateMe(@CurrentUser() user: CurrentUserPayload, @Body() dto: UpdateVendorDto) {
     // In prod, look up vendorId via user relationship; simplified here
     return this.vendorService.update(user.id, dto);
+  }
+
+  @Post("me/razorpay-link")
+  @ApiOperation({ summary: "Create/link a Razorpay Route account for payouts" })
+  linkRazorpay(@CurrentUser() user: CurrentUserPayload) {
+    return this.vendorService.linkRazorpayAccount(user.id);
   }
 }

@@ -8,6 +8,8 @@
     "target": "ES2022",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
+    "declaration": false,
+    "declarationMap": false,
     "strictPropertyInitialization": false
   },
   "include": ["src/**/*"]

@@ -90,16 +90,37 @@ Docker Compose credentials match the defaults in `apps/api/.env.example`.
 **Step 11 ✓** — Notifications (SMS/email via MSG91+Resend, mock mode when keys absent)  
 **Step 12 ✓** — Sitemap, robots.txt, request-ID middleware  
 
+**Step 13 ✓** — Vendor portal UI (`apps/web/src/app/vendor/`) — onboarding wizard, dashboard, products CRUD, orders queue, returns management, store profile
+
 **Remaining work:**
 - Wire `apps/admin` CSS (copy tailwind config from apps/web)
 - Add `NEXT_PUBLIC_SITE_URL` to `apps/web/.env.example`
 - Run `pnpm install && pnpm db:generate && pnpm db:migrate` to materialise schema
 - Replace TODO in `checkout.service.ts`: create actual `Order` + `OrderItem` records from cart on `payment.captured` webhook
-3. Vendor onboarding + KYC
-4. Product catalog (vendor side + Meilisearch)
-5. Customer storefront
-6. Cart + Razorpay checkout
-7. Order management + Shiprocket
-8. Returns + refunds
-9. Admin panel
-10. Notifications, observability, SEO
+- Add product image upload endpoint (R2/Cloudinary) — vendor portal has a placeholder
+
+## Vendor Portal
+
+Lives at `apps/web/src/app/vendor/` (route group within the Next.js web app, shares the same design system and `apiFetch`).
+
+```
+vendor/
+├── layout.tsx          Auth + status guard (redirects by VendorStatus)
+├── page.tsx            Dashboard (stats, recent orders, quick actions)
+├── onboarding/         3-step wizard: business → KYC → bank → POST /vendors/apply
+├── profile/            Edit store info + read-only bank/KYC display
+├── products/           List with tab filters, search, pagination, delete confirm
+│   ├── new/            Create product with dynamic variants
+│   └── [id]/edit/      Edit existing product (pre-populated form)
+├── orders/             Expandable order rows; advance status; Shiprocket shipment
+└── returns/            Approve/reject return requests with reason modal
+```
+
+**Status routing in layout.tsx:**
+- Not logged in → `/auth?next=/vendor`
+- `null` vendor or `DRAFT` → `/vendor/onboarding`
+- `PENDING` → full-page "Under Review" screen
+- `SUSPENDED` → full-page "Suspended" screen
+- `APPROVED` → normal portal
+
+**`useVendor` hook** (`src/hooks/use-vendor.ts`) — fetches `GET /v1/vendors/me`, returns `{ vendor, loading, error, refetch }`. 404 means no vendor yet (not an error).

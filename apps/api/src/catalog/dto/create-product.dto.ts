@@ -1,12 +1,13 @@
 import {
-  IsString, IsOptional, IsArray, IsInt, IsBoolean,
-  ValidateNested, Min, MaxLength, IsEnum,
+  IsString, IsOptional, IsArray, IsInt,
+  ValidateNested, Min, MaxLength,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { ProductStatus } from "@sario/db";
 
 export class CreateVariantDto {
+  @ApiPropertyOptional({ description: "Existing variant id — present when editing." })
+  @IsString() @IsOptional() id?: string;
   @ApiProperty() @IsString() name: string;
   @ApiProperty() @IsString() sku: string;
   @ApiPropertyOptional() @IsString() @IsOptional() color?: string;
@@ -26,6 +27,12 @@ export class CreateProductDto {
   @ApiPropertyOptional() @IsString() @IsOptional() giTag?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() hsnCode?: string;
   @ApiPropertyOptional() @IsArray() @IsString({ each: true }) @IsOptional() tags?: string[];
+
+  @ApiPropertyOptional({ type: [String], example: ["Wedding", "Festival"] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  occasion?: string[];
 
   @ApiProperty({ type: [CreateVariantDto] })
   @IsArray()

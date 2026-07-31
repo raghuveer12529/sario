@@ -1,15 +1,20 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import "../../node_modules/@sario/ui/src/globals.css";
+import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
-export const metadata: Metadata = { title: { default: "Sario Admin", template: "%s | Sario Admin" } };
+export const metadata: Metadata = {
+  title: "Sario Admin",
+  description: "Marketplace Management Console",
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} font-sans antialiased`}>{children}</body>
+      <body className={`${inter.variable} font-sans antialiased bg-[#F8F9FC]`}>
+        {children}
+      </body>
     </html>
   );
 }

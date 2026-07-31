@@ -1,19 +1,18 @@
 import {
   Controller, Post, Patch, Delete, Get,
-  Body, Param, Query, UseGuards, Version,
+  Body, Param, Query, UseGuards,
   ParseIntPipe, DefaultValuePipe,
 } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from "@nestjs/swagger";
 import { ProductStatus } from "@sario/db";
 import { ProductService } from "./product.service.js";
 import { CreateProductDto } from "./dto/create-product.dto.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { JwtUserAuthGuard } from "../auth/guards/jwt-user-auth.guard.js";
 import { CurrentUser, type CurrentUserPayload } from "../auth/decorators/current-user.decorator.js";
 
 @ApiTags("Products (Vendor)")
-@Controller("vendors/me/products")
-@Version("1")
-@UseGuards(JwtAuthGuard)
+@Controller({ path: "vendors/me/products", version: "1" })
+@UseGuards(JwtUserAuthGuard)
 @ApiBearerAuth()
 export class ProductController {
   constructor(private readonly productService: ProductService) {}
@@ -40,6 +39,12 @@ export class ProductController {
     return this.productService.softDelete(user.id, id);
   }
 
+  @Get(":id")
+  @ApiOperation({ summary: "Get a single vendor product by ID" })
+  getOne(@CurrentUser() user: CurrentUserPayload, @Param("id") id: string) {
+    return this.productService.getForVendor(user.id, id);
+  }
+
   @Get()
   @ApiOperation({ summary: "List own products with optional filters" })
   @ApiQuery({ name: "status", enum: ProductStatus, required: false })
@@ -53,6 +58,11 @@ export class ProductController {
     @Query("page", new DefaultValuePipe(1), ParseIntPipe) page = 1,
     @Query("limit", new DefaultValuePipe(20), ParseIntPipe) limit = 20,
   ) {
-    return this.productService.listForVendor(user.id, { status, search, page, limit });
+    return this.productService.listForVendor(user.id, {
+      ...(status ? { status } : {}),
+      ...(search ? { search } : {}),
+      page,
+      limit,
+    });
   }
 }

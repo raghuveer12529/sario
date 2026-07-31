@@ -3,12 +3,19 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Logger,
 } from "@nestjs/common";
 import { OrderStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { ShiprocketService } from "../shiprocket/shiprocket.service.js";
+import { VendorService } from "../vendor/vendor.service.js";
+import { ReturnsService } from "../returns/returns.service.js";
+import { captureException } from "../observability/sentry.js";
 
-const BUYER_CANCELLABLE = [OrderStatus.PENDING, OrderStatus.CONFIRMED];
+const BUYER_CANCELLABLE: readonly OrderStatus[] = [
+  OrderStatus.PENDING,
+  OrderStatus.CONFIRMED,
+];
 const VENDOR_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
   [OrderStatus.CONFIRMED]: OrderStatus.PACKED,
   [OrderStatus.PACKED]: OrderStatus.SHIPPED,
@@ -16,9 +23,13 @@ const VENDOR_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus>> = {
 
 @Injectable()
 export class OrderService {
+  private readonly logger = new Logger(OrderService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly shiprocket: ShiprocketService,
+    private readonly vendor: VendorService,
+    private readonly returns: ReturnsService,
   ) {}
 
   // ─── Buyer ─────────────────────────────────────────────────────────────────
@@ -44,7 +55,7 @@ export class OrderService {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        items: { include: { variant: true } },
+        items: { include: { variant: { include: { product: { select: { name: true, slug: true, description: true } } } } } },
         payments: { select: { status: true, method: true, capturedAt: true } },
         shipment: true,
         refunds: true,
@@ -60,6 +71,30 @@ export class OrderService {
     if (!BUYER_CANCELLABLE.includes(order.status)) {
       throw new BadRequestException(`Order in ${order.status} status cannot be cancelled.`);
     }
+
+    if (order.status === OrderStatus.CONFIRMED) {
+      // Paid order: refund the buyer (also restocks the items) before cancelling.
+      await this.returns.issueRefund(orderId, undefined, `Order cancelled: ${reason}`);
+    } else {
+      // Unpaid (PENDING): nothing was charged — just free the reserved units.
+      const items = await this.prisma.orderItem.findMany({
+        where: { orderId },
+        select: { variantId: true, quantity: true },
+      });
+      for (const item of items) {
+        await this.prisma.inventory
+          .update({
+            where: { variantId: item.variantId },
+            data: { reservedQuantity: { decrement: item.quantity } },
+          })
+          .catch((err) => {
+            this.logger.error(`Inventory write failed for variant ${item.variantId}`, err);
+            captureException(err, { variantId: item.variantId });
+            return null;
+          });
+      }
+    }
+
     return this.prisma.order.update({
       where: { id: orderId },
       data: { status: OrderStatus.CANCELLED, cancellationReason: reason, cancelledAt: new Date() },
@@ -77,27 +112,30 @@ export class OrderService {
     }
     return this.prisma.order.update({
       where: { id: orderId },
-      data: { status: OrderStatus.RETURN_REQUESTED },
+      data: { status: OrderStatus.RETURN_REQUESTED, notes: reason },
     });
   }
 
   // ─── Vendor ────────────────────────────────────────────────────────────────
 
-  async listForVendor(vendorId: string, page: number, limit: number) {
+  async listForVendor(userId: string, page: number, limit: number, status?: OrderStatus) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
+    const where = status ? { vendorId, status } : { vendorId };
     const [data, total] = await Promise.all([
       this.prisma.order.findMany({
-        where: { vendorId },
-        include: { items: { include: { variant: true } }, shipment: true },
+        where,
+        include: { items: { include: { variant: { include: { product: { select: { name: true, slug: true } }, images: { where: { isPrimary: true }, take: 1 } } } } }, shipment: true },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
       }),
-      this.prisma.order.count({ where: { vendorId } }),
+      this.prisma.order.count({ where }),
     ]);
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
-  async advanceOrderStatus(vendorId: string, orderId: string) {
+  async advanceOrderStatus(userId: string, orderId: string) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order) throw new NotFoundException();
     if (order.vendorId !== vendorId) throw new ForbiddenException();
@@ -112,7 +150,8 @@ export class OrderService {
     return this.prisma.order.update({ where: { id: orderId }, data: updateData });
   }
 
-  async createShipment(vendorId: string, orderId: string) {
+  async createShipment(userId: string, orderId: string) {
+    const vendorId = await this.vendor.resolveVendorId(userId);
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: { items: { include: { variant: true } }, address: true },
@@ -161,4 +200,5 @@ export class OrderService {
 
     return result;
   }
+
 }

@@ -1,11 +1,14 @@
 import {
   Injectable,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
   BadRequestException,
 } from "@nestjs/common";
 import { VendorStatus } from "@sario/db";
 import { PrismaService } from "../prisma/prisma.service.js";
+import { RedisService } from "../redis/redis.service.js";
+import { RazorpayService } from "../payment/razorpay.service.js";
 import { PennyDropService } from "./penny-drop.service.js";
 import type { ApplyVendorDto } from "./dto/apply-vendor.dto.js";
 import type { UpdateVendorDto } from "./dto/update-vendor.dto.js";
@@ -21,6 +24,8 @@ function slugify(name: string): string {
 export class VendorService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+    private readonly razorpay: RazorpayService,
     private readonly pennyDrop: PennyDropService,
   ) {}
 
@@ -39,11 +44,12 @@ export class VendorService {
       data: {
         businessName: dto.businessName,
         slug,
-        gstin: dto.gstin,
-        pan: dto.pan,
-        about: dto.about,
-        returnPolicy: dto.returnPolicy,
+        gstin: dto.gstin ?? null,
+        pan: dto.pan ?? null,
+        about: dto.about ?? null,
+        returnPolicy: dto.returnPolicy ?? null,
         status: VendorStatus.PENDING,
+        userId,
         bankAccounts: {
           create: {
             accountHolder: dto.accountHolder,
@@ -61,11 +67,8 @@ export class VendorService {
   }
 
   async getMyVendor(userId: string) {
-    // In this simple model a user can have one vendor profile.
-    // We identify it via the vendor linked to the user's orders / future userId column.
-    // For now, look up by the passed-in userId stored externally.
-    const vendor = await this.prisma.vendor.findFirst({
-      where: { deletedAt: null },
+    const vendor = await this.prisma.vendor.findUnique({
+      where: { userId, deletedAt: null },
       include: { bankAccounts: { select: { id: true, bankName: true, isPrimary: true, isVerified: true } } },
     });
     if (!vendor) throw new NotFoundException("Vendor profile not found.");
@@ -78,6 +81,39 @@ export class VendorService {
       where: { id: vendorId },
       data: dto,
     });
+  }
+
+  /** Create a Razorpay Route linked account for the vendor and store its id for payouts. */
+  async linkRazorpayAccount(userId: string) {
+    const vendor = await this.prisma.vendor.findUnique({
+      where: { userId, deletedAt: null },
+      include: {
+        user: { select: { email: true, name: true } },
+        bankAccounts: { where: { isPrimary: true }, select: { accountHolder: true } },
+      },
+    });
+    if (!vendor) throw new NotFoundException("Vendor profile not found.");
+
+    if (vendor.razorpayAccountId) {
+      return { razorpayAccountId: vendor.razorpayAccountId };
+    }
+
+    const contactName =
+      vendor.bankAccounts[0]?.accountHolder ?? vendor.user?.name ?? vendor.businessName;
+    const email = vendor.user?.email ?? `vendor+${vendor.id}@sario.local`;
+
+    const account = await this.razorpay.createLinkedAccount({
+      email,
+      businessName: vendor.businessName,
+      contactName,
+    });
+
+    await this.prisma.vendor.update({
+      where: { id: vendor.id },
+      data: { razorpayAccountId: account.id },
+    });
+
+    return { razorpayAccountId: account.id };
   }
 
   // ─── Admin operations ──────────────────────────────────────────────────────
@@ -101,7 +137,7 @@ export class VendorService {
     });
   }
 
-  async reject(vendorId: string, reason?: string) {
+  async reject(vendorId: string, _reason?: string) {
     const vendor = await this.assertVendorExists(vendorId);
     if (vendor.status !== VendorStatus.PENDING) {
       throw new BadRequestException("Only PENDING vendors can be rejected.");
@@ -113,11 +149,36 @@ export class VendorService {
   }
 
   async suspend(vendorId: string) {
-    await this.assertVendorExists(vendorId);
-    return this.prisma.vendor.update({
+    const vendorRecord = await this.assertVendorExists(vendorId);
+    if (vendorRecord.status !== VendorStatus.APPROVED) {
+      throw new BadRequestException("Only an APPROVED vendor can be suspended.");
+    }
+    const updated = await this.prisma.vendor.update({
       where: { id: vendorId },
       data: { status: VendorStatus.SUSPENDED },
     });
+    const vendor = await this.prisma.vendor.findUnique({ where: { id: vendorId }, select: { userId: true } });
+    if (vendor?.userId) await this.redis.del(`jwt:user:${vendor.userId}`).catch(() => {});
+    return updated;
+  }
+
+  async findOne(vendorId: string) {
+    const vendor = await this.prisma.vendor.findUnique({
+      where: { id: vendorId, deletedAt: null },
+      include: {
+        bankAccounts: true,
+        user: { select: { id: true, name: true, phone: true } },
+        _count: { select: { products: true } },
+      },
+    });
+    if (!vendor) throw new NotFoundException("Vendor not found.");
+    return vendor;
+  }
+
+  async resolveVendorId(userId: string): Promise<string> {
+    const vendor = await this.prisma.vendor.findUnique({ where: { userId }, select: { id: true } });
+    if (!vendor) throw new ForbiddenException("No vendor account found for this user.");
+    return vendor.id;
   }
 
   private async assertVendorExists(vendorId: string) {

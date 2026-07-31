@@ -1,2 +1,2 @@
-export * from "./components/button.js";
-export * from "./lib/utils.js";
+export * from "./components/button";
+export * from "./lib/utils";

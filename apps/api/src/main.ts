@@ -6,20 +6,39 @@ import {
 } from "@nestjs/platform-fastify";
 import { ValidationPipe, VersioningType } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
-import helmet from "helmet";
+import helmet from "@fastify/helmet";
+import fastifyCookie from "@fastify/cookie";
 import { AppModule } from "./app.module.js";
+import { initSentry } from "./observability/sentry.js";
+import { AllExceptionsFilter } from "./observability/all-exceptions.filter.js";
+
+// BigInt fields (e.g. monthlyGmvPaise on Vendor) are not JSON-serializable by default.
+// Serialize as string to avoid precision loss on large paise values.
+(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function (
+  this: bigint,
+): string {
+  return this.toString();
+};
 
 async function bootstrap() {
+  initSentry();
+
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ logger: true }),
   );
 
+  // Cookies (must be registered before any route handler reads req.cookies)
+  await app.register(fastifyCookie as never, {
+    secret: process.env["COOKIE_SECRET"],
+  });
+
   // Security
-  await app.register(helmet as never);
+  await app.register(helmet as never, { crossOriginResourcePolicy: false });
   app.enableCors({
-    origin: process.env["ALLOWED_ORIGINS"]?.split(",") ?? ["http://localhost:3000"],
+    origin: process.env["WEB_ORIGIN"] ?? process.env["ALLOWED_ORIGINS"]?.split(",") ?? "http://localhost:3000",
     credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
   });
 
   // Versioning
@@ -33,6 +52,9 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Global exception filter (logs + reports 5xx to Sentry)
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   // Swagger (dev only)
   if (process.env["NODE_ENV"] !== "production") {

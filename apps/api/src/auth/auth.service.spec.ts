@@ -1,15 +1,22 @@
 import { Test, type TestingModule } from "@nestjs/testing";
-import { BadRequestException, TooManyRequestsException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, UnauthorizedException } from "@nestjs/common";
+import { VerificationTokenType } from "@sario/db";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
-import { OtpPurpose } from "@sario/db";
+import { NotificationService } from "../notification/notification.service.js";
+// OTP_DISABLED
+// import { OtpPurpose } from "@sario/db";
 import { AuthService } from "./auth.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { RedisService } from "../redis/redis.service.js";
-import { Msg91Service } from "../msg91/msg91.service.js";
+// OTP_DISABLED
+// import { Msg91Service } from "../msg91/msg91.service.js";
 import * as cryptoUtil from "../common/crypto.util.js";
+import * as bcrypt from "bcrypt";
 
 jest.mock("../common/crypto.util.js");
+jest.mock("bcrypt");
+const mockBcrypt = bcrypt as jest.Mocked<typeof bcrypt>;
 
 const mockCrypto = cryptoUtil as jest.Mocked<typeof cryptoUtil>;
 
@@ -22,6 +29,9 @@ const mockPrisma = {
   },
   user: {
     upsert: jest.fn(),
+    findUnique: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
   },
   refreshToken: {
     create: jest.fn(),
@@ -29,16 +39,30 @@ const mockPrisma = {
     update: jest.fn(),
     updateMany: jest.fn(),
   },
+  vendor: {
+    findUnique: jest.fn(),
+  },
+  verificationToken: {
+    findUnique: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+    updateMany: jest.fn(),
+  },
+  $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
 };
 
 const mockRedis = {
   incr: jest.fn(),
   expire: jest.fn(),
+  del: jest.fn(),
 };
 
-const mockMsg91 = {
-  sendOtp: jest.fn(),
+const mockNotifications = {
+  sendTransactionalEmail: jest.fn(),
 };
+
+// OTP_DISABLED
+// const mockMsg91 = { sendOtp: jest.fn() };
 
 const mockJwt = {
   sign: jest.fn().mockReturnValue("signed-access-token"),
@@ -60,15 +84,18 @@ describe("AuthService", () => {
         AuthService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: RedisService, useValue: mockRedis },
-        { provide: Msg91Service, useValue: mockMsg91 },
+        // OTP_DISABLED: { provide: Msg91Service, useValue: mockMsg91 },
         { provide: JwtService, useValue: mockJwt },
         { provide: ConfigService, useValue: mockConfig },
+        { provide: NotificationService, useValue: mockNotifications },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
   });
 
+  // OTP_DISABLED — remove comment block to re-enable
+  /*
   // ─── requestOtp ───────────────────────────────────────────────────────────
 
   describe("requestOtp", () => {
@@ -85,9 +112,12 @@ describe("AuthService", () => {
       const result = await service.requestOtp(phone, OtpPurpose.LOGIN);
 
       expect(result.expiresIn).toBe(300);
-      expect(mockPrisma.otpRecord.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ phone, hashedOtp: "hashed-otp" }) }),
-      );
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const createArg = mockPrisma.otpRecord.create.mock.calls[0]?.[0] as
+        | { data: { phone: string; hashedOtp: string } }
+        | undefined;
+      expect(createArg?.data.phone).toBe(phone);
+      expect(createArg?.data.hashedOtp).toBe("hashed-otp");
       expect(mockMsg91.sendOtp).toHaveBeenCalledWith(phone, "123456");
     });
 
@@ -114,11 +144,11 @@ describe("AuthService", () => {
       expect(mockRedis.expire).not.toHaveBeenCalled();
     });
 
-    it("throws TooManyRequestsException after 3 OTPs per hour", async () => {
+    it("throws 429 after 3 OTPs per hour", async () => {
       mockRedis.incr.mockResolvedValue(4);
 
       await expect(service.requestOtp(phone, OtpPurpose.LOGIN)).rejects.toThrow(
-        TooManyRequestsException,
+        HttpException,
       );
       expect(mockPrisma.otpRecord.create).not.toHaveBeenCalled();
     });
@@ -209,6 +239,7 @@ describe("AuthService", () => {
       );
     });
   });
+  */
 
   // ─── refresh ──────────────────────────────────────────────────────────────
 
@@ -218,7 +249,7 @@ describe("AuthService", () => {
       id: "rt_1",
       revokedAt: null,
       expiresAt: new Date(Date.now() + 86400000),
-      user: { id: "usr_1", phone: "9876543210", deletedAt: null },
+      user: { id: "usr_1", email: "buyer@example.com", phone: "9876543210", deletedAt: null },
     };
 
     beforeEach(() => {
@@ -226,6 +257,7 @@ describe("AuthService", () => {
       mockCrypto.generateRefreshToken.mockReturnValue("new-raw-token");
       mockPrisma.refreshToken.create.mockResolvedValue({});
       mockPrisma.refreshToken.update.mockResolvedValue({});
+      mockPrisma.vendor.findUnique.mockResolvedValue(null);
     });
 
     it("rotates and returns new tokens on valid refresh token", async () => {
@@ -286,6 +318,246 @@ describe("AuthService", () => {
         where: { userId: "usr_1", hashedToken: "hashed", revokedAt: null },
         data: { revokedAt: expect.any(Date) as Date },
       });
+    });
+  });
+
+  // ─── login ────────────────────────────────────────────────────────────────
+
+  describe("login", () => {
+    const email = "buyer@example.com";
+    const password = "secret123";
+    const fakeUser = {
+      id: "usr_1",
+      email,
+      phone: null,
+      name: null,
+      isVerified: true,
+      passwordHash: "hashed-pw",
+    };
+
+    beforeEach(() => {
+      mockCrypto.generateRefreshToken.mockReturnValue("raw-refresh");
+      mockCrypto.hashRefreshToken.mockReturnValue("hashed-refresh");
+      mockPrisma.refreshToken.create.mockResolvedValue({});
+    });
+
+    it("rejects an unknown email instead of auto-registering", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.login(email, password)).rejects.toThrow(UnauthorizedException);
+
+      // login must never create a user — registration is a separate flow.
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
+      expect(mockPrisma.user.upsert).not.toHaveBeenCalled();
+    });
+
+    it("returns tokens when credentials are correct", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(fakeUser);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+
+      const result = await service.login(email, password);
+
+      expect(result.accessToken).toBe("signed-access-token");
+    });
+
+    it("throws UnauthorizedException when password is wrong", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(fakeUser);
+      mockBcrypt.compare.mockResolvedValue(false as never);
+
+      await expect(service.login(email, password)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it("throws UnauthorizedException when user has no passwordHash", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ ...fakeUser, passwordHash: null });
+      await expect(service.login(email, password)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  // ─── vendorLogin ──────────────────────────────────────────────────────────
+
+  describe("vendorLogin", () => {
+    const email = "seller@example.com";
+    const password = "secret123";
+    const fakeUser = {
+      id: "usr_2",
+      email,
+      phone: null,
+      name: null,
+      isVerified: true,
+      passwordHash: "hashed-pw",
+    };
+    const fakeVendor = { id: "ven_1", businessName: "Silk House", status: "APPROVED" };
+
+    beforeEach(() => {
+      mockCrypto.generateRefreshToken.mockReturnValue("raw-refresh");
+      mockCrypto.hashRefreshToken.mockReturnValue("hashed-refresh");
+      mockPrisma.refreshToken.create.mockResolvedValue({});
+    });
+
+    it("returns tokens and vendor on valid credentials", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(fakeUser);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+      mockPrisma.vendor.findUnique.mockResolvedValue(fakeVendor);
+
+      const result = await service.vendorLogin(email, password);
+
+      expect(result.accessToken).toBe("signed-access-token");
+      expect(result.vendor.businessName).toBe("Silk House");
+    });
+
+    it("throws UnauthorizedException when user not found", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+      await expect(service.vendorLogin(email, password)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it("throws UnauthorizedException when password wrong", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(fakeUser);
+      mockBcrypt.compare.mockResolvedValue(false as never);
+      await expect(service.vendorLogin(email, password)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it("throws ForbiddenException when user has no vendor record", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(fakeUser);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+      mockPrisma.vendor.findUnique.mockResolvedValue(null);
+      await expect(service.vendorLogin(email, password)).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  // ─── requestPasswordReset ─────────────────────────────────────────────────
+
+  describe("requestPasswordReset", () => {
+    beforeEach(() => {
+      mockConfig.get.mockReturnValue("http://localhost:3000");
+      mockCrypto.generateRefreshToken.mockReturnValue("raw-reset");
+      mockCrypto.hashRefreshToken.mockReturnValue("hashed-reset");
+      mockPrisma.verificationToken.updateMany.mockResolvedValue({ count: 0 });
+      mockPrisma.verificationToken.create.mockResolvedValue({});
+    });
+
+    it("creates a token and emails a link for an account with a password", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ id: "usr_1", passwordHash: "h" });
+
+      await service.requestPasswordReset("buyer@example.com");
+
+      expect(mockPrisma.verificationToken.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ tokenHash: "hashed-reset", type: VerificationTokenType.PASSWORD_RESET }),
+        }),
+      );
+      expect(mockNotifications.sendTransactionalEmail).toHaveBeenCalledTimes(1);
+    });
+
+    it("is a silent no-op for an unknown email (no enumeration, no email)", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await service.requestPasswordReset("nobody@example.com");
+
+      expect(mockPrisma.verificationToken.create).not.toHaveBeenCalled();
+      expect(mockNotifications.sendTransactionalEmail).not.toHaveBeenCalled();
+    });
+
+    it("is a no-op for a phone-only account with no password", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ id: "usr_1", passwordHash: null });
+
+      await service.requestPasswordReset("phoneonly@example.com");
+
+      expect(mockPrisma.verificationToken.create).not.toHaveBeenCalled();
+      expect(mockNotifications.sendTransactionalEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── resetPassword ────────────────────────────────────────────────────────
+
+  describe("resetPassword", () => {
+    const validRecord = {
+      id: "vt_1",
+      userId: "usr_1",
+      type: VerificationTokenType.PASSWORD_RESET,
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 60000),
+    };
+
+    beforeEach(() => {
+      mockCrypto.hashRefreshToken.mockReturnValue("hashed-reset");
+      mockBcrypt.hash.mockResolvedValue("new-hash" as never);
+      mockPrisma.verificationToken.update.mockResolvedValue({});
+      mockPrisma.user.update.mockResolvedValue({});
+      mockPrisma.refreshToken.updateMany.mockResolvedValue({ count: 2 });
+      mockRedis.del.mockResolvedValue(1);
+    });
+
+    it("updates the password and revokes all sessions on a valid token", async () => {
+      mockPrisma.verificationToken.findUnique.mockResolvedValue(validRecord);
+
+      await service.resetPassword("raw-reset", "NewPass9x");
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "usr_1" }, data: { passwordHash: "new-hash" } }),
+      );
+      expect(mockPrisma.refreshToken.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: "usr_1", revokedAt: null } }),
+      );
+      expect(mockPrisma.verificationToken.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { usedAt: expect.any(Date) as Date } }),
+      );
+    });
+
+    it("rejects an unknown token", async () => {
+      mockPrisma.verificationToken.findUnique.mockResolvedValue(null);
+      await expect(service.resetPassword("bad", "NewPass9x")).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it("rejects an already-used token", async () => {
+      mockPrisma.verificationToken.findUnique.mockResolvedValue({ ...validRecord, usedAt: new Date() });
+      await expect(service.resetPassword("raw-reset", "NewPass9x")).rejects.toThrow(BadRequestException);
+    });
+
+    it("rejects an expired token", async () => {
+      mockPrisma.verificationToken.findUnique.mockResolvedValue({ ...validRecord, expiresAt: new Date(Date.now() - 1000) });
+      await expect(service.resetPassword("raw-reset", "NewPass9x")).rejects.toThrow(BadRequestException);
+    });
+
+    it("rejects a token of the wrong type (e.g. an email-verification token)", async () => {
+      mockPrisma.verificationToken.findUnique.mockResolvedValue({ ...validRecord, type: VerificationTokenType.EMAIL_VERIFICATION });
+      await expect(service.resetPassword("raw-reset", "NewPass9x")).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ─── verifyEmail ──────────────────────────────────────────────────────────
+
+  describe("verifyEmail", () => {
+    const validRecord = {
+      id: "vt_2",
+      userId: "usr_1",
+      type: VerificationTokenType.EMAIL_VERIFICATION,
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 60000),
+    };
+
+    beforeEach(() => {
+      mockCrypto.hashRefreshToken.mockReturnValue("hashed-verify");
+      mockPrisma.verificationToken.update.mockResolvedValue({});
+      mockPrisma.user.update.mockResolvedValue({});
+    });
+
+    it("marks the user verified and consumes the token", async () => {
+      mockPrisma.verificationToken.findUnique.mockResolvedValue(validRecord);
+
+      const result = await service.verifyEmail("raw-verify");
+
+      expect(result).toEqual({ verified: true });
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({ where: { id: "usr_1" }, data: { isVerified: true } });
+      expect(mockPrisma.verificationToken.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { usedAt: expect.any(Date) as Date } }),
+      );
+    });
+
+    it("rejects an invalid token without verifying the user", async () => {
+      mockPrisma.verificationToken.findUnique.mockResolvedValue(null);
+      await expect(service.verifyEmail("bad")).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
     });
   });
 });

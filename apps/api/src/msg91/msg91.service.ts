@@ -35,7 +35,10 @@ export class Msg91Service implements IOtpProvider {
       const body = (await res.json()) as { type?: string; message?: string };
 
       if (body.type === "success") {
-        return { success: true, messageId: body.message };
+        return {
+          success: true,
+          ...(body.message ? { messageId: body.message } : {}),
+        };
       }
 
       this.logger.error(`MSG91 error for ${phone}:`, body);

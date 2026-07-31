@@ -1,0 +1,33 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: Lint (api + admin)
+        run: pnpm --filter @sario/api --filter @sario/admin lint
+      - name: Build (api + admin)
+        run: pnpm --filter @sario/api --filter @sario/admin build
+      # web lint/build are non-blocking until its lint debt is cleared (tracked separately)
+      - name: Lint web (non-blocking)
+        run: pnpm --filter @sario/web lint
+        continue-on-error: true
+      - name: Build web (non-blocking)
+        run: pnpm --filter @sario/web build
+        continue-on-error: true

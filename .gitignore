@@ -34,7 +34,7 @@ Thumbs.db
 *.swo
 
 # Prisma
-packages/db/prisma/migrations/
+# NOTE: migrations/ MUST be committed — `prisma migrate deploy` needs them in prod.
 packages/db/generated/
 
 # Testing
@@ -46,3 +46,8 @@ coverage/
 sario-master-plan.md
 .claude/.mcp.json
 #
+
+# Cloudflare tunnel logs/pids (local dev sharing)
+.tunnel-logs/
+tests/
+.claude/
