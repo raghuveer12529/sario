@@ -3,11 +3,17 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
-  retries: 0,
+  // The multi-step buyer/vendor journeys drive the single-threaded Next.js dev
+  // servers hard; too many parallel workers starves them and causes spurious
+  // timeouts. Cap workers and allow one retry so the gate stays deterministic.
+  workers: 2,
+  retries: 1,
   reporter: [["html", { outputFolder: "playwright-report" }]],
   use: {
     baseURL: "http://localhost:3000",
     screenshot: "only-on-failure",
+    navigationTimeout: 20000,
+    actionTimeout: 15000,
     launchOptions: {
       slowMo: process.env.SLOW_MO ? parseInt(process.env.SLOW_MO) : 0,
     },

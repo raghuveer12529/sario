@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, Body, UseGuards } from "@nestjs/common";
+import { Controller, Get, Post, Param, Query, Body, UseGuards, BadRequestException } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from "@nestjs/swagger";
 import { IsOptional, IsString, IsInt, Min } from "class-validator";
 import { OrderStatus, ProductStatus } from "@sario/db";
@@ -55,6 +55,11 @@ export class AdminController {
     @Query("page") page = "1",
     @Query("limit") limit = "20",
   ) {
+    // Guard the raw query param: an unknown value would otherwise reach Prisma's enum
+    // filter and throw a 500 instead of a clean 400.
+    if (!Object.values(OrderStatus).includes(status)) {
+      throw new BadRequestException(`Invalid status. Expected one of: ${Object.values(OrderStatus).join(", ")}`);
+    }
     const p = parseInt(page);
     const l = parseInt(limit);
     const [data, total] = await Promise.all([
@@ -152,23 +157,14 @@ export class AdminController {
 
   @Post("admin/returns/:id/approve")
   @ApiOperation({ summary: "Admin approves return request" })
-  async approveReturn(@Param("id") id: string) {
-    return this.prisma.order.update({
-      where: { id },
-      data: { status: OrderStatus.RETURN_APPROVED },
-    });
+  approveReturn(@Param("id") id: string) {
+    return this.returnsService.adminApproveReturn(id);
   }
 
   @Post("admin/returns/:id/reject")
   @ApiOperation({ summary: "Admin rejects return request" })
-  async rejectReturn(@Param("id") id: string, @Body() dto: RejectReturnDto) {
-    return this.prisma.order.update({
-      where: { id },
-      data: {
-        status: OrderStatus.RETURN_REJECTED,
-        notes: dto.reason ?? "Return rejected by admin",
-      },
-    });
+  rejectReturn(@Param("id") id: string, @Body() dto: RejectReturnDto) {
+    return this.returnsService.adminRejectReturn(id, dto.reason);
   }
 
   @Post("admin/returns/:id/refund")

@@ -41,7 +41,7 @@ test.describe("Order Tracking", () => {
       await page.getByRole("button", { name: /Continue to Payment/i }).click();
     }
     await expect(page.getByRole("heading", { name: /Review & Pay/i })).toBeVisible({ timeout: 15000 });
-    await page.getByRole("button", { name: /Pay/i }).click();
+    await page.getByRole("button", { name: /Pay ₹/ }).click();
     await expect(page.getByRole("heading", { name: /Order Confirmed/i })).toBeVisible({ timeout: 20000 });
 
     // 4. Go to orders list — order should appear with "Confirmed" status

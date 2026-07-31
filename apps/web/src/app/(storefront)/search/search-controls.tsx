@@ -128,7 +128,7 @@ export function SearchControls({ q, sort, fabric, categoryId, region, totalHits 
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
-              <p className="text-base font-bold text-[#1A1A1A]">Filters</p>
+              <h2 className="text-base font-bold text-[#1A1A1A]">Filters</h2>
               <button onClick={() => setDrawerOpen(false)} className="rounded-lg p-1 hover:bg-[#F5F5F5]">
                 <svg className="h-5 w-5 text-[#4D4D4D]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path d="M18 6L6 18M6 6l12 12" />
@@ -214,7 +214,7 @@ export function SidebarFilters({ q, sort, fabric, categoryId, region, minPrice: 
   return (
     <div className="rounded-xl border border-[#F0F0F0] bg-white overflow-hidden">
       <div className="border-b border-[#F0F0F0] px-4 py-3 flex items-center justify-between">
-        <p className="text-sm font-bold text-[#1A1A1A]">Filters</p>
+        <h2 className="text-sm font-bold text-[#1A1A1A]">Filters</h2>
         {hasFilters && (
           <button
             onClick={() => { setMinPrice(0); setMaxPrice(0); navigate({ fabric: "", region: "", minPrice: 0, maxPrice: 0 }); }}

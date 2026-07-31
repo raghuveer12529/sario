@@ -15,6 +15,7 @@ export {
   AdminRole,
   OtpPurpose,
   PayoutStatus,
+  VerificationTokenType,
 } from "@prisma/client";
 
 // Re-export model types

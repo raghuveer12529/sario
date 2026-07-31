@@ -3,12 +3,12 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { VendorService } from "./vendor.service.js";
 import { ApplyVendorDto } from "./dto/apply-vendor.dto.js";
 import { UpdateVendorDto } from "./dto/update-vendor.dto.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { JwtUserAuthGuard } from "../auth/guards/jwt-user-auth.guard.js";
 import { CurrentUser, type CurrentUserPayload } from "../auth/decorators/current-user.decorator.js";
 
 @ApiTags("Vendor")
 @Controller({ path: "vendors", version: "1" })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtUserAuthGuard)
 @ApiBearerAuth()
 export class VendorController {
   constructor(private readonly vendorService: VendorService) {}

@@ -5,14 +5,14 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { IsString } from "class-validator";
 import { OrderService } from "./order.service.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { JwtUserAuthGuard } from "../auth/guards/jwt-user-auth.guard.js";
 import { CurrentUser, type CurrentUserPayload } from "../auth/decorators/current-user.decorator.js";
 
 class CancelOrderDto { @IsString() reason: string; }
 
 @ApiTags("Orders (Buyer)")
 @Controller({ path: "me/orders", version: "1" })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtUserAuthGuard)
 @ApiBearerAuth()
 export class OrderController {
   constructor(private readonly orderService: OrderService) {}

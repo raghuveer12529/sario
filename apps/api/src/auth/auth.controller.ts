@@ -16,7 +16,8 @@ import { LoginDto } from "./dto/login.dto.js";
 import { RegisterDto } from "./dto/register.dto.js";
 import { RefreshDto } from "./dto/refresh.dto.js";
 import { UpdateProfileDto } from "./dto/update-profile.dto.js";
-import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
+import { ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto } from "./dto/password-reset.dto.js";
+import { JwtUserAuthGuard } from "./guards/jwt-user-auth.guard.js";
 import { CurrentUser, type CurrentUserPayload } from "./decorators/current-user.decorator.js";
 
 // OTP_DISABLED — imports kept for when OTP is re-enabled
@@ -46,7 +47,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Get("me")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtUserAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get current user profile" })
   getMe(@CurrentUser() user: CurrentUserPayload) {
@@ -54,7 +55,7 @@ export class AuthController {
   }
 
   @Patch("me")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtUserAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Update current user profile" })
   updateMe(@CurrentUser() user: CurrentUserPayload, @Body() dto: UpdateProfileDto) {
@@ -67,6 +68,43 @@ export class AuthController {
   @ApiOperation({ summary: "Customer registration — email + password" })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto.email, dto.password);
+  }
+
+  @Post("password/forgot")
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Request a password-reset link (always 200 — never reveals if the email exists)" })
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    await this.authService.requestPasswordReset(dto.email);
+    return { message: "If an account exists for that email, a reset link has been sent." };
+  }
+
+  @Post("password/reset")
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Set a new password using a reset token" })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.authService.resetPassword(dto.token, dto.password);
+    return { message: "Your password has been reset. Please sign in." };
+  }
+
+  @Post("email/verify")
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Confirm an email address using a verification token" })
+  verifyEmail(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto.token);
+  }
+
+  @Post("email/resend")
+  @UseGuards(JwtUserAuthGuard)
+  @ApiBearerAuth()
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Resend the verification email to the signed-in user" })
+  async resendVerification(@CurrentUser() user: CurrentUserPayload) {
+    await this.authService.resendEmailVerification(user.id);
+    return { message: "If your email is unverified, a new verification link has been sent." };
   }
 
   @Post("login")
@@ -103,7 +141,7 @@ export class AuthController {
 
   @Post("logout")
   @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtUserAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Revoke the current refresh token" })
   logout(@CurrentUser() user: CurrentUserPayload, @Body() dto: RefreshDto) {

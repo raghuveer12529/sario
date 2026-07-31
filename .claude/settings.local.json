@@ -1,7 +1,7 @@
 {
   "permissions": {
     "allow": [
-    "Bash(*)",
+      "Bash(*)",
       "Bash(git *)",
       "Bash(pnpm *)",
       "Bash(npm *)",
@@ -102,7 +102,8 @@
       "Bash(/opt/homebrew/bin/npx playwright *)",
       "Bash(mkdir -p /Users/rtalari/Documents/GitHub/sario/.claude/skills/cloudflare-tunnel)",
       "Bash(mv /Users/rtalari/.claude/skills/cloudflare-tunnel/SKILL.md /Users/rtalari/Documents/GitHub/sario/.claude/skills/cloudflare-tunnel/SKILL.md)",
-      "Bash(rmdir /Users/rtalari/.claude/skills/cloudflare-tunnel)"
+      "Bash(rmdir /Users/rtalari/.claude/skills/cloudflare-tunnel)",
+      "Skill(run)"
     ]
   }
 }

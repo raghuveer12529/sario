@@ -4,18 +4,33 @@ test.describe("Vendor Portal — Product Creation", () => {
   test("vendor can create a product and see it in the products list", async ({ page }) => {
     test.setTimeout(120000);
 
-    // 1. Login as vendor1 (email+password, seeded approved vendor)
+    // 1. Login as vendor1 (email+password, seeded approved vendor). Wait for the
+    //    login POST to complete (so its Set-Cookie lands) before navigating away —
+    //    otherwise the vendor layout guard sees no session and bounces to /auth.
     await page.goto("/auth?next=/vendor");
     await page.getByPlaceholder("you@example.com").fill("vendor1@sario.dev");
-    await page.getByPlaceholder(/Min\. 6 characters/i).fill("Password1!");
-    await page.getByRole("button", { name: /Sign In/i }).click();
+    await page.getByPlaceholder(/Your password/i).fill("Password1!");
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/api/auth/login") && r.request().method() === "POST"),
+      page.getByRole("button", { name: /Sign In/i }).click(),
+    ]);
 
-    // Auth page redirects to ?next=/vendor after successful login
-    await expect(page).toHaveURL(/\/vendor/, { timeout: 30000 });
+    // Let the post-login ?next redirect fully settle on the dashboard before we
+    // navigate away — on WebKit a late redirect otherwise interrupts the next goto.
+    await page.waitForURL("**/vendor", { timeout: 30000 });
+    await page.waitForLoadState("networkidle");
     await page.screenshot({ path: "tests/screenshots/vendor-dashboard.png" });
 
-    // 2. Navigate to new product form
-    await page.goto("/vendor/products/new");
+    // 2. Navigate to new product form (retry once if an in-flight app redirect interrupts).
+    for (let i = 0; i < 3; i++) {
+      try {
+        await page.goto("/vendor/products/new", { waitUntil: "networkidle" });
+        break;
+      } catch {
+        await page.waitForTimeout(500);
+      }
+    }
+    await expect(page).toHaveURL(/\/vendor\/products\/new/, { timeout: 10000 });
     await expect(page.getByText(/Product Details/i)).toBeVisible({ timeout: 10000 });
 
     // 3. Fill required product fields

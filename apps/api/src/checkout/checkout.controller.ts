@@ -4,7 +4,7 @@ import { Throttle, SkipThrottle } from "@nestjs/throttler";
 import { IsString } from "class-validator";
 import { ConfigService } from "@nestjs/config";
 import { CheckoutService } from "./checkout.service.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { JwtUserAuthGuard } from "../auth/guards/jwt-user-auth.guard.js";
 import { CurrentUser, type CurrentUserPayload } from "../auth/decorators/current-user.decorator.js";
 import type { FastifyRequest } from "fastify";
 
@@ -28,7 +28,7 @@ export class CheckoutController {
 
   @Post("initiate")
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtUserAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Initiate checkout — returns Razorpay order details" })
   initiate(
@@ -54,7 +54,7 @@ export class CheckoutController {
   }
 
   @Post("verify")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtUserAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Verify Razorpay payment signature and confirm order" })
   async verify(@CurrentUser() user: CurrentUserPayload, @Body() dto: VerifyPaymentDto) {

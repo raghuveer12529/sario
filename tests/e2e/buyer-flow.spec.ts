@@ -57,7 +57,7 @@ test.describe("Buyer Authenticated Flow", () => {
     await expect(page.getByRole("heading", { name: /Review & Pay/i })).toBeVisible({ timeout: 15000 });
     await page.screenshot({ path: "tests/screenshots/review-and-pay.png" });
 
-    const payBtn = page.getByRole("button", { name: /Pay/i });
+    const payBtn = page.getByRole("button", { name: /Pay ₹/ });
     await payBtn.waitFor({ timeout: 10000 });
     await payBtn.click();
 

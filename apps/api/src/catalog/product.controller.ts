@@ -7,12 +7,12 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from "@nestjs/swagger"
 import { ProductStatus } from "@sario/db";
 import { ProductService } from "./product.service.js";
 import { CreateProductDto } from "./dto/create-product.dto.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { JwtUserAuthGuard } from "../auth/guards/jwt-user-auth.guard.js";
 import { CurrentUser, type CurrentUserPayload } from "../auth/decorators/current-user.decorator.js";
 
 @ApiTags("Products (Vendor)")
 @Controller({ path: "vendors/me/products", version: "1" })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtUserAuthGuard)
 @ApiBearerAuth()
 export class ProductController {
   constructor(private readonly productService: ProductService) {}

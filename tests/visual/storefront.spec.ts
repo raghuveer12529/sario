@@ -17,6 +17,8 @@ test.describe("Home page", () => {
 
 test.describe("Search page", () => {
   test("desktop shows filters sidebar + product grid", async ({ page }) => {
+    // Sidebar is `hidden lg:block`, so pin a desktop viewport regardless of project.
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/search?q=saree");
     await expect(page.locator("aside").first()).toBeVisible();
     await page.screenshot({ path: "tests/screenshots/search-desktop.png", fullPage: true });
@@ -74,9 +76,10 @@ test.describe("Product detail page", () => {
 });
 
 test.describe("Cart page", () => {
-  test("shows sign-in prompt when logged out", async ({ page }) => {
+  test("shows empty-cart state when logged out (guest carts are supported)", async ({ page }) => {
     await page.goto("/cart");
-    await expect(page.getByRole("link", { name: /Sign In/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Cart is empty/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Start Shopping/i })).toBeVisible();
     await page.screenshot({ path: "tests/screenshots/cart-logged-out.png", fullPage: true });
   });
 });
@@ -84,7 +87,7 @@ test.describe("Cart page", () => {
 test.describe("Checkout page", () => {
   test("shows sign-in prompt when logged out", async ({ page }) => {
     await page.goto("/checkout");
-    await expect(page.getByRole("link", { name: /Sign In/i })).toBeVisible();
+    await expect(page.getByRole("main").getByRole("link", { name: /Sign In/i }).first()).toBeVisible();
     await page.screenshot({ path: "tests/screenshots/checkout-logged-out.png", fullPage: true });
   });
 });

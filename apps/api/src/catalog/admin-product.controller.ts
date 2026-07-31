@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, Body, UseGuards, NotFoundException } from "@nestjs/common";
+import { Controller, Get, Post, Param, Query, Body, UseGuards, NotFoundException, BadRequestException } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { IsString, IsOptional } from "class-validator";
 import { ProductStatus } from "@sario/db";
@@ -49,6 +49,9 @@ export class AdminProductController {
     @Query("page") page = "1",
     @Query("limit") limit = "20",
   ) {
+    if (!Object.values(ProductStatus).includes(status)) {
+      throw new BadRequestException(`Invalid status. Expected one of: ${Object.values(ProductStatus).join(", ")}`);
+    }
     const p = parseInt(page);
     const l = parseInt(limit);
     const skip = (p - 1) * l;
@@ -64,15 +67,23 @@ export class AdminProductController {
     });
   }
 
+  /** 404 (instead of a Prisma P2025 → 500) when the id doesn't resolve to a live product. */
+  private async assertProductExists(id: string) {
+    const product = await this.prisma.product.findUnique({ where: { id, deletedAt: null }, select: { id: true } });
+    if (!product) throw new NotFoundException("Product not found");
+  }
+
   @Post(":id/approve")
   @ApiOperation({ summary: "Approve product and index in Meilisearch" })
-  approve(@Param("id") id: string) {
+  async approve(@Param("id") id: string) {
+    await this.assertProductExists(id);
     return this.productService.approveAndIndex(id);
   }
 
   @Post(":id/reject")
   @ApiOperation({ summary: "Reject product with reason" })
   async reject(@Param("id") id: string, @Body() dto: RejectProductDto) {
+    await this.assertProductExists(id);
     return this.prisma.product.update({
       where: { id },
       data: { status: ProductStatus.REJECTED, rejectionReason: dto.reason ?? null },

@@ -149,7 +149,10 @@ export class VendorService {
   }
 
   async suspend(vendorId: string) {
-    await this.assertVendorExists(vendorId);
+    const vendorRecord = await this.assertVendorExists(vendorId);
+    if (vendorRecord.status !== VendorStatus.APPROVED) {
+      throw new BadRequestException("Only an APPROVED vendor can be suspended.");
+    }
     const updated = await this.prisma.vendor.update({
       where: { id: vendorId },
       data: { status: VendorStatus.SUSPENDED },

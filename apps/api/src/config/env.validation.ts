@@ -40,6 +40,8 @@ const schema = Joi.object({
   PLATFORM_COMMISSION_BPS: Joi.number().min(0).max(10000).default(1500),
   SENTRY_DSN: Joi.string().uri().optional().allow(""),
   ALLOWED_ORIGINS: Joi.string().optional(),
+  // Base URL of the storefront, used to build password-reset / email-verification links.
+  WEB_APP_URL: Joi.string().uri().optional(),
 }).unknown(true);
 
 export function validateEnv(

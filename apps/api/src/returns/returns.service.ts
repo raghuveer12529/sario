@@ -61,9 +61,50 @@ export class ReturnsService {
     });
   }
 
+  // ─── Admin moderation (not vendor-scoped) ───────────────────────────────────
+
+  /** An order can only be moderated while a return is actually pending. */
+  private async assertPendingReturn(orderId: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, status: true },
+    });
+    if (!order) throw new NotFoundException("Order not found.");
+    if (order.status !== OrderStatus.RETURN_REQUESTED) {
+      throw new BadRequestException("No pending return request on this order.");
+    }
+    return order;
+  }
+
+  async adminApproveReturn(orderId: string) {
+    await this.assertPendingReturn(orderId);
+    return this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.RETURN_APPROVED },
+    });
+  }
+
+  async adminRejectReturn(orderId: string, reason?: string) {
+    await this.assertPendingReturn(orderId);
+    return this.prisma.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.RETURN_REJECTED, notes: reason ?? "Return rejected by admin" },
+    });
+  }
+
   // ─── Admin / post-QC refund ─────────────────────────────────────────────────
 
   async processRefund(orderId: string, amountPaise?: number) {
+    // A refund here settles an *approved* return. Guard the state so an admin can't
+    // (accidentally or via a skipped step) refund an order whose return was never approved.
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    });
+    if (!order) throw new NotFoundException("Order not found.");
+    if (order.status !== OrderStatus.RETURN_APPROVED) {
+      throw new BadRequestException("Only an order with an approved return can be refunded.");
+    }
     const refund = await this.issueRefund(orderId, amountPaise, "Return approved");
     await this.prisma.order.update({
       where: { id: orderId },

@@ -12,14 +12,14 @@ interface Vendor {
   bannerUrl?: string | null;
 }
 
-interface ProductVariant { pricePaise: number; mrpPaise: number }
-interface ProductImage { url: string; altText?: string | null }
+// Shape returned by the Meilisearch-backed /catalog/search endpoint (flat, not variant/image arrays).
 interface Product {
   id: string;
   name: string;
   slug: string;
-  images: ProductImage[];
-  variants: ProductVariant[];
+  minPricePaise: number;
+  mrpPaise: number;
+  primaryImageUrl?: string | null;
 }
 
 async function getVendor(slug: string): Promise<Vendor | null> {
@@ -81,9 +81,9 @@ export default async function WeaverPage({ params }: { params: { slug: string } 
           </h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {products.map((p) => {
-              const price = p.variants[0]?.pricePaise ?? 0;
-              const mrp = p.variants[0]?.mrpPaise ?? 0;
-              const img = p.images[0]?.url ?? "";
+              const price = p.minPricePaise ?? 0;
+              const mrp = p.mrpPaise ?? 0;
+              const img = p.primaryImageUrl ?? "";
               return (
                 <Link
                   key={p.id}
@@ -94,7 +94,7 @@ export default async function WeaverPage({ params }: { params: { slug: string } 
                     {img && (
                       <Image
                         src={img}
-                        alt={p.images[0]?.altText ?? p.name}
+                        alt={p.name}
                         fill
                         sizes="(max-width: 640px) 50vw, 25vw"
                         className="object-cover group-hover:scale-105 transition-transform duration-500"

@@ -33,7 +33,13 @@ export class CartController {
    * anonymous cart keyed by an httpOnly cart_id cookie, issued on first use.
    */
   private resolveOwner(req: AuthedRequest, res: FastifyReply): CartOwner {
-    if (req.user?.id) return { userId: req.user.id };
+    // Only real customers/vendors own a user cart. An admin token resolves via the shared
+    // JWT strategy but its `sub` is an AdminUser id, not a User id — treating it as a cart
+    // owner would violate Cart_userId_fkey. Fall through to a harmless guest cart instead.
+    const role = req.user?.role;
+    if (req.user?.id && role !== "SUPER_ADMIN" && role !== "SUPPORT") {
+      return { userId: req.user.id };
+    }
 
     let anonymousId = req.cookies?.[CART_COOKIE];
     if (!anonymousId) {

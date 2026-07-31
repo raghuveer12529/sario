@@ -91,6 +91,7 @@ model User {
   orders        Order[]
   reviews       Review[]
   refreshTokens RefreshToken[]
+  verificationTokens VerificationToken[]
   vendor        Vendor?
 
   @@index([phone])
@@ -122,6 +123,27 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
+}
+
+enum VerificationTokenType {
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+}
+
+// Single-use, hashed tokens for password reset and email verification links.
+model VerificationToken {
+  id        String                @id @default(cuid())
+  userId    String
+  tokenHash String                @unique
+  type      VerificationTokenType
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime              @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
   @@index([expiresAt])
 }
 

@@ -5,7 +5,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { IsString, IsBoolean, IsOptional, IsInt } from "class-validator";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { UploadService } from "../upload/upload.service.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { JwtUserAuthGuard } from "../auth/guards/jwt-user-auth.guard.js";
 import { CurrentUser, type CurrentUserPayload } from "../auth/decorators/current-user.decorator.js";
 import { ProductService } from "./product.service.js";
 
@@ -23,7 +23,7 @@ class SaveImageDto {
 
 @ApiTags("Product Images (Vendor)")
 @Controller({ path: "vendors/me/products/:productId/images", version: "1" })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtUserAuthGuard)
 @ApiBearerAuth()
 export class ProductImageController {
   constructor(

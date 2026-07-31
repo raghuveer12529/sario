@@ -1,6 +1,6 @@
 import {
   Injectable,
-  // OTP_DISABLED: BadRequestException,
+  BadRequestException,
   UnauthorizedException,
   ForbiddenException,
   ConflictException,
@@ -16,9 +16,11 @@ import { ConfigService } from "@nestjs/config";
 // import { OtpPurpose } from "@sario/db";
 // OTP_DISABLED
 // import { OTP_TTL_SECONDS, OTP_MAX_ATTEMPTS_PER_HOUR, REFRESH_TOKEN_TTL_DAYS } from "@sario/shared";
+import { VerificationTokenType } from "@sario/db";
 import { REFRESH_TOKEN_TTL_DAYS } from "@sario/shared";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { RedisService } from "../redis/redis.service.js";
+import { NotificationService } from "../notification/notification.service.js";
 // OTP_DISABLED
 // import { Msg91Service } from "../msg91/msg91.service.js";
 import {
@@ -44,7 +46,16 @@ export class AuthService {
     private readonly redis: RedisService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly notifications: NotificationService,
   ) {}
+
+  /** Reset/verification links point at the web app. */
+  private webUrl(): string {
+    return this.config.get<string>("WEB_APP_URL") ?? "http://localhost:3000";
+  }
+
+  private readonly RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
+  private readonly VERIFY_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
   // OTP_DISABLED — remove this block comment to re-enable OTP flow
   /*
@@ -224,7 +235,9 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // A phone-only account (e.g. legacy/dev) may already hold this email — attach the password.
+    // A phone-only account (e.g. legacy/dev) may already hold this email — attach the
+    // password. That account already proved ownership via phone OTP, so keep it verified.
+    // A brand-new email account starts unverified until it confirms via the emailed link.
     const user = existing
       ? await this.prisma.user.update({
           where: { id: existing.id },
@@ -232,12 +245,128 @@ export class AuthService {
           select: { id: true, email: true, phone: true, name: true, isVerified: true },
         })
       : await this.prisma.user.create({
-          data: { email, passwordHash, isVerified: true },
+          data: { email, passwordHash, isVerified: false },
           select: { id: true, email: true, phone: true, name: true, isVerified: true },
         });
 
+    if (!user.isVerified) {
+      await this.sendEmailVerification(user.id, email);
+    }
+
     const tokens = await this.issueTokens(user.id, email, "CUSTOMER");
     return { ...tokens, user: { ...user, email } };
+  }
+
+  // ─── Email verification ──────────────────────────────────────────────────────
+
+  /** Issue a fresh verification token (invalidating older unused ones) and email the link. */
+  async sendEmailVerification(userId: string, email: string): Promise<void> {
+    const rawToken = generateRefreshToken();
+    const tokenHash = hashRefreshToken(rawToken);
+
+    await this.prisma.$transaction([
+      this.prisma.verificationToken.updateMany({
+        where: { userId, type: VerificationTokenType.EMAIL_VERIFICATION, usedAt: null },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.verificationToken.create({
+        data: {
+          userId,
+          tokenHash,
+          type: VerificationTokenType.EMAIL_VERIFICATION,
+          expiresAt: new Date(Date.now() + this.VERIFY_TTL_MS),
+        },
+      }),
+    ]);
+
+    const link = `${this.webUrl()}/auth/verify-email?token=${rawToken}`;
+    await this.notifications.sendTransactionalEmail(
+      email,
+      "Verify your Sario email address",
+      `Welcome to Sario! Please confirm your email by opening this link within 24 hours:\n\n${link}\n\nIf you didn't create an account, you can ignore this email.`,
+    );
+  }
+
+  async verifyEmail(rawToken: string): Promise<{ verified: true }> {
+    const record = await this.consumeToken(rawToken, VerificationTokenType.EMAIL_VERIFICATION);
+    await this.prisma.user.update({ where: { id: record.userId }, data: { isVerified: true } });
+    return { verified: true };
+  }
+
+  /** Resend verification for the currently authenticated user. No-op if already verified. */
+  async resendEmailVerification(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, isVerified: true },
+    });
+    if (!user?.email || user.isVerified) return;
+    await this.sendEmailVerification(userId, user.email);
+  }
+
+  // ─── Password reset ────────────────────────────────────────────────────────
+
+  /** Always resolves without revealing whether the email exists (anti-enumeration). */
+  async requestPasswordReset(email: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, passwordHash: true },
+    });
+    // Only accounts that actually have a password can reset one.
+    if (!user || !user.passwordHash) return;
+
+    const rawToken = generateRefreshToken();
+    const tokenHash = hashRefreshToken(rawToken);
+
+    await this.prisma.$transaction([
+      this.prisma.verificationToken.updateMany({
+        where: { userId: user.id, type: VerificationTokenType.PASSWORD_RESET, usedAt: null },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.verificationToken.create({
+        data: {
+          userId: user.id,
+          tokenHash,
+          type: VerificationTokenType.PASSWORD_RESET,
+          expiresAt: new Date(Date.now() + this.RESET_TTL_MS),
+        },
+      }),
+    ]);
+
+    const link = `${this.webUrl()}/auth/reset-password?token=${rawToken}`;
+    await this.notifications.sendTransactionalEmail(
+      email,
+      "Reset your Sario password",
+      `We received a request to reset your password. Open this link within 1 hour to choose a new one:\n\n${link}\n\nIf you didn't request this, you can safely ignore this email — your password won't change.`,
+    );
+  }
+
+  async resetPassword(rawToken: string, newPassword: string): Promise<void> {
+    const record = await this.consumeToken(rawToken, VerificationTokenType.PASSWORD_RESET);
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
+      // Revoke every existing session — a reset implies the old credentials are compromised.
+      this.prisma.refreshToken.updateMany({
+        where: { userId: record.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+    await this.redis.del(`jwt:user:${record.userId}`).catch(() => undefined);
+  }
+
+  /** Validate a raw token, mark it used, and return the record. Throws on invalid/expired/used. */
+  private async consumeToken(rawToken: string, type: VerificationTokenType) {
+    const tokenHash = hashRefreshToken(rawToken);
+    const record = await this.prisma.verificationToken.findUnique({ where: { tokenHash } });
+    if (!record || record.type !== type || record.usedAt || record.expiresAt < new Date()) {
+      throw new BadRequestException("This link is invalid or has expired. Please request a new one.");
+    }
+    await this.prisma.verificationToken.update({
+      where: { id: record.id },
+      data: { usedAt: new Date() },
+    });
+    return record;
   }
 
   async vendorLogin(

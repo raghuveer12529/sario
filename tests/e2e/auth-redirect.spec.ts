@@ -40,7 +40,7 @@ test.describe("Unauthenticated Redirect Guards", () => {
 
     // Log in as vendor
     await page.getByPlaceholder("you@example.com").fill("vendor1@sario.dev");
-    await page.getByPlaceholder(/Min\. 6 characters/i).fill("Password1!");
+    await page.getByPlaceholder(/Your password/i).fill("Password1!");
     await page.getByRole("button", { name: /Sign In/i }).click();
 
     // Should be returned to /vendor

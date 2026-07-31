@@ -13,7 +13,7 @@ import {
 } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { IsString, IsOptional, IsBoolean, Matches, Length } from "class-validator";
-import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
+import { JwtUserAuthGuard } from "./guards/jwt-user-auth.guard.js";
 import { CurrentUser, type CurrentUserPayload } from "./decorators/current-user.decorator.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 
@@ -30,7 +30,7 @@ class CreateAddressDto {
 
 @ApiTags("Me")
 @Controller({ path: "me", version: "1" })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtUserAuthGuard)
 @ApiBearerAuth()
 export class MeController {
   constructor(private readonly prisma: PrismaService) {}

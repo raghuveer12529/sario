@@ -81,6 +81,11 @@ export class NotificationService {
     await Promise.allSettled(tasks);
   }
 
+  /** Send a one-off transactional email (password reset / verification links). */
+  async sendTransactionalEmail(to: string, subject: string, body: string): Promise<void> {
+    await this.sendEmail(to, subject, body);
+  }
+
   private async sendSms(phone: string, message: string): Promise<void> {
     if (!this.msg91Key) {
       this.logger.log(`[MOCK SMS] +91${phone}: ${message}`);
@@ -105,7 +110,8 @@ export class NotificationService {
 
   private async sendEmail(to: string, subject: string, body: string): Promise<void> {
     if (!this.resendKey) {
-      this.logger.log(`[MOCK EMAIL] to=${to} subject="${subject}"`);
+      // Log the body too so reset/verification links are usable in local dev.
+      this.logger.log(`[MOCK EMAIL] to=${to} subject="${subject}"\n${body}`);
       return;
     }
     try {

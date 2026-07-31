@@ -15,14 +15,19 @@ export async function apiFetch<T>(
   options?: RequestInit,
 ): Promise<T> {
   const hasBody = options?.body != null;
+  // Pull headers out of options so the merged set below can't be clobbered by a
+  // later `...options` spread. (A caller passing its own `headers` — e.g. an
+  // Idempotency-Key — must NOT drop Content-Type/Authorization, or the JSON body
+  // goes unparsed and the request silently fails validation.)
+  const { headers: callerHeaders, ...restOptions } = options ?? {};
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
+    ...restOptions,
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...getAuthHeader(),
-      ...options?.headers,
+      ...callerHeaders,
     },
-    ...options,
   });
 
   if (!res.ok) {

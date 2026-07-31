@@ -16,13 +16,16 @@ export function getAdminToken(): string | null {
 export async function adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getAdminToken();
   const hasBody = options?.body != null;
+  // Extract caller headers so a trailing `...options` spread can't clobber the
+  // merged Content-Type/Authorization set below.
+  const { headers: callerHeaders, ...restOptions } = options ?? {};
   const res = await fetch(`${API_BASE}${path}`, {
+    ...restOptions,
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options?.headers,
+      ...callerHeaders,
     },
-    ...options,
   });
   if (res.status === 401) {
     if (typeof window !== "undefined") window.location.href = "/login";

@@ -168,6 +168,13 @@ export default function AuthPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full rounded-xl border border-[#E8E8E8] bg-white px-4 py-2.5 text-sm text-[#1A1A1A] outline-none focus:border-primary"
                 />
+                {mode === "signin" && (
+                  <div className="mt-1.5 text-right">
+                    <Link href="/auth/forgot-password" className="text-xs font-semibold text-primary hover:underline">
+                      Forgot password?
+                    </Link>
+                  </div>
+                )}
               </div>
 
               {error && (
